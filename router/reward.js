@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const Reward = require("../models/Reward");
+JWT_SECRET='local-development-secret-change-before-production'
 
 const router = express.Router();
 
@@ -10,7 +11,7 @@ async function requireAuth(req, res, next) {
   try {
     const header = String(req.headers.authorization || "");
     if (!header.startsWith("Bearer ")) return res.status(401).json({ success: false, message: "Authentication required" });
-    const payload = jwt.verify(header.slice(7), process.env.JWT_SECRET);
+    const payload = jwt.verify(header.slice(7), JWT_SECRET);
     const user = await User.findById(payload.id);
     if (!user || user.status === "disabled") return res.status(401).json({ success: false, message: "User is unavailable" });
     req.user = user;

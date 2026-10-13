@@ -7,6 +7,7 @@ const GiveawayEntry = require("../models/GiveawayEntry");
 const futils = require("../utils/fileutils");
 const { imageUpload } = require("../utils/media-upload");
 const { removeIfUnreferenced } = require("../utils/media-references");
+JWT_SECRET='local-development-secret-change-before-production'
 
 const router = express.Router();
 
@@ -18,7 +19,7 @@ function toBoolean(value, fallback = false) {
 async function authenticate(req) {
   const header = String(req.headers.authorization || "");
   if (!header.startsWith("Bearer ")) return null;
-  const payload = jwt.verify(header.slice(7), process.env.JWT_SECRET);
+  const payload = jwt.verify(header.slice(7), JWT_SECRET);
   return User.findById(payload.id);
 }
 

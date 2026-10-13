@@ -10,12 +10,13 @@ const { toMinorUnits, fromMinorUnits } = require("../utils/money");
 const { sendApiError } = require("../utils/api-error");
 
 const router = express.Router();
+JWT_SECRET='local-development-secret-change-before-production'
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const phonePattern = /^\+[1-9]\d{7,14}$/;
 
 function signToken(user) {
-  return jwt.sign({ id: user._id.toString(), role: user.role }, process.env.JWT_SECRET, {
+  return jwt.sign({ id: user._id.toString(), role: user.role }, JWT_SECRET, {
     expiresIn: "30d",
   });
 }
