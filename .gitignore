@@ -1,0 +1,4 @@
+node_modules
+backup_data
+package-lock.json
+tmp/

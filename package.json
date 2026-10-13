@@ -1,0 +1,33 @@
+{
+  "name": "skyllabus-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Skyllabus API and admin server",
+  "main": "server.js",
+  "scripts": {
+    "prestart": "node scripts/ensure-local-replica-set.js",
+    "start": "node server.js",
+    "predev": "node scripts/ensure-local-replica-set.js",
+    "dev": "node --watch server.js",
+    "mongo:migrate-local": "node scripts/migrate-local-mongodb.js",
+    "product:migrate-content": "node scripts/migrate-product-content.js",
+    "check": "node --check server.js && node --check config.js && node --check models/fileSchema.js && node --check models/ReferralCommission.js && node --check scripts/ensure-local-replica-set.js && node --check scripts/migrate-local-mongodb.js && node --check scripts/migrate-product-content.js && node --check utils/api-error.js && node --check utils/fileutils.js && node --check utils/media-upload.js && node --check utils/media-references.js && node --check router/cdn.js && node --check router/auth.js && node --check router/user.js && node --check router/category.js && node --check router/product.js && node --check router/enrollment.js && node --check router/progress.js && node --check router/giveaway.js && node --check router/reward.js && node --check router/wallet.js && node --check router/referral.js && node --check router/admin.js",
+    "test": "node --test test/api.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.5",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.11.0",
+    "multer": "^2.4.0"
+  },
+  "devDependencies": {
+    "mongodb-memory-server": "^11.3.0",
+    "supertest": "^7.3.1"
+  }
+}
