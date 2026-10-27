@@ -6,16 +6,16 @@ const User = require("../models/User");
 const Product = require("../models/Product");
 const Enrollment = require("../models/Enrollment");
 const Payment = require("../models/Payment");
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
-const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 const { toMinorUnits } = require("../utils/money");
 const { sendApiError } = require("../utils/api-error");
 require("dotenv").config();
 const FRONTEND_URL =
-  "http://68.178.168.48:5000/";
+"http://68.178.168.48:5000/";
 const router = express.Router();
 let stripe;
 
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 
 function stripeClient(req) {
   if (req?.app?.locals?.stripe) return req.app.locals.stripe;
