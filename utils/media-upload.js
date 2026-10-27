@@ -7,24 +7,23 @@ const multer = require("multer");
 const stagingDirectory = path.join(os.tmpdir(), "skyllabus-upload-staging");
 fs.mkdirSync(stagingDirectory, { recursive: true });
 
-function isImageField(name) {
-  return name === "thumbnail" || name === "banner";
-}
-
+function isImageField(name) { return name === "thumbnail" || name === "banner"; }
+function isChapterPdfField(name) { return /^chapterPdf_\d+_\d+$/.test(name) || /^noteFile_\d+_\d+(?:_\d+)?$/.test(name); }
 
 const storage = multer.diskStorage({
-    destination: (_req, _file, callback) => callback(null, stagingDirectory),
-    filename: (_req, file, callback) => callback(null, `${Date.now()}-${crypto.randomUUID()}${path.extname(file.originalname)}`),
-  });
+  destination: (_req, _file, callback) => callback(null, stagingDirectory),
+  filename: (_req, file, callback) => callback(null, `${Date.now()}-${crypto.randomUUID()}${path.extname(file.originalname)}`),
+});
 
 const productUpload = multer({
   storage,
-  limits: { fileSize: 25 * 1024 * 1024, files: 2 },
+  limits: { fileSize: 25 * 1024 * 1024, files: 100 },
   fileFilter: (_req, file, callback) => {
     if (isImageField(file.fieldname)) {
-      return /^image\/(jpeg|png|webp)$/.test(file.mimetype)
-        ? callback(null, true)
-        : callback(new Error("Images must be JPEG, PNG, or WebP"));
+      return /^image\/(jpeg|png|webp)$/.test(file.mimetype) ? callback(null, true) : callback(new Error("Images must be JPEG, PNG, or WebP"));
+    }
+    if (isChapterPdfField(file.fieldname)) {
+      return file.mimetype === "application/pdf" ? callback(null, true) : callback(new Error("Chapter notes must be PDF files"));
     }
     return callback(new Error(`Unexpected upload field: ${file.fieldname}`));
   },
@@ -33,17 +32,13 @@ const productUpload = multer({
 const imageUpload = multer({
   storage,
   limits: { fileSize: 25 * 1024 * 1024, files: 1 },
-  fileFilter: (_req, file, callback) => /^image\/(jpeg|png|webp)$/.test(file.mimetype)
-    ? callback(null, true)
-    : callback(new Error("Images must be JPEG, PNG, or WebP")),
+  fileFilter: (_req, file, callback) => /^image\/(jpeg|png|webp)$/.test(file.mimetype) ? callback(null, true) : callback(new Error("Images must be JPEG, PNG, or WebP")),
 }).single("image");
 
 const profilePhotoUpload = multer({
   storage,
   limits: { fileSize: 25 * 1024 * 1024, files: 1 },
-  fileFilter: (_req, file, callback) => /^image\/(jpeg|png|webp)$/.test(file.mimetype)
-    ? callback(null, true)
-    : callback(new Error("Images must be JPEG, PNG, or WebP")),
+  fileFilter: (_req, file, callback) => /^image\/(jpeg|png|webp)$/.test(file.mimetype) ? callback(null, true) : callback(new Error("Images must be JPEG, PNG, or WebP")),
 }).single("photo");
 
 module.exports = { productUpload, imageUpload, profilePhotoUpload };

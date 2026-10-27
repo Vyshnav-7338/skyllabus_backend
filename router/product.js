@@ -108,6 +108,113 @@ async function requireUser(req, res, next) {
   return next();
 }
 
+
+function parseJsonField(value, label) {
+  if (value === undefined) return undefined;
+  if (Array.isArray(value) || (value && typeof value === "object")) return value;
+  try { return JSON.parse(String(value)); }
+  catch (_error) { throw validationError(`${label} must be valid JSON`); }
+}
+
+function existingById(items, id, label) {
+  if (!id) return null;
+  const found = (items || []).find((item) => item._id?.toString() === String(id));
+  if (!found) throw validationError(`${label} id does not belong to this product`);
+  return found;
+}
+
+function normalizeAnswerIndex(question, moduleIndex, questionIndex) {
+  const options = (question.options || []).map((item) => String(item || "").trim());
+  if (options.length !== 4 || options.some((item) => !item)) {
+    throw validationError(`Module ${moduleIndex + 1}, question ${questionIndex + 1}: exactly 4 non-empty options are required`);
+  }
+  let answer = question.correctAnswerIndex ?? question.answerIndex ?? question.answer ?? question.correctAnswer;
+  if (typeof answer === "string" && !/^\d+$/.test(answer.trim())) answer = options.indexOf(answer.trim());
+  answer = Number(answer);
+  // Accept UI values 1-4 when answer/correctAnswer is supplied, but keep explicit correctAnswerIndex as 0-3.
+  if (question.correctAnswerIndex === undefined && question.answerIndex === undefined && Number.isInteger(answer) && answer >= 1 && answer <= 4) answer -= 1;
+  if (!Number.isInteger(answer) || answer < 0 || answer > 3) {
+    throw validationError(`Module ${moduleIndex + 1}, question ${questionIndex + 1}: answer must select one of the 4 options`);
+  }
+  return { options, correctAnswerIndex: answer };
+}
+
+async function buildModules(product, rawModules, files, createdMedia) {
+  const modules = parseJsonField(rawModules, "Modules");
+  if (!Array.isArray(modules)) throw validationError("Modules must be an array");
+  const oldModules = product.modules || [];
+  const result = [];
+
+  for (let mi = 0; mi < modules.length; mi += 1) {
+    const input = modules[mi] || {};
+    const oldModule = existingById(oldModules, input.id || input._id, `Module ${mi + 1}`);
+    const title = String(input.title || oldModule?.title || "").trim();
+    if (!title) throw validationError(`Module ${mi + 1}: title is required`);
+    const rawChapters = input.chapters ?? [];
+    if (!Array.isArray(rawChapters)) throw validationError(`Module ${mi + 1}: chapters must be an array`);
+    const chapters = [];
+
+    for (let ci = 0; ci < rawChapters.length; ci += 1) {
+      const chapterInput = rawChapters[ci] || {};
+      const oldChapter = existingById(oldModule?.chapters || [], chapterInput.id || chapterInput._id, `Module ${mi + 1}, chapter ${ci + 1}`);
+      const chapterTitle = String(chapterInput.title || oldChapter?.title || "").trim();
+      if (!chapterTitle) throw validationError(`Module ${mi + 1}, chapter ${ci + 1}: title is required`);
+      const upload = uploadedFile(files, `chapterPdf_${mi}_${ci}`) || uploadedFile(files, `noteFile_${mi}_${ci}_0`) || uploadedFile(files, `noteFile_${mi}_${ci}`);
+      let notePdf = plainFile(oldChapter?.notePdf);
+      if (upload) {
+        notePdf = await futils.getFileObject(upload);
+        createdMedia.push(notePdf);
+      } else if (chapterInput.removeNotePdf === true || chapterInput.removeNotePdf === "true") {
+        notePdf = null;
+      }
+      chapters.push({
+        ...(oldChapter?._id ? { _id: oldChapter._id } : {}),
+        title: chapterTitle,
+        description: String(chapterInput.description ?? oldChapter?.description ?? "").trim(),
+        order: validOrder(chapterInput.order, ci + 1, `Module ${mi + 1}, chapter ${ci + 1}`),
+        noteTitle: String(chapterInput.noteTitle ?? oldChapter?.noteTitle ?? `${chapterTitle} Notes`).trim(),
+        notePdf,
+        isPublished: toBoolean(chapterInput.isPublished, oldChapter?.isPublished !== false),
+      });
+    }
+
+    let assessment = null;
+    if (input.assessment !== null && input.assessment !== "null" && input.assessment !== undefined) {
+      const a = input.assessment || {};
+      const oldAssessment = oldModule?.assessment;
+      const rawQuestions = a.questions ?? [];
+      if (!Array.isArray(rawQuestions)) throw validationError(`Module ${mi + 1}: assessment questions must be an array`);
+      const questions = rawQuestions.map((q, qi) => {
+        const oldQuestion = existingById(oldAssessment?.questions || [], q.id || q._id, `Module ${mi + 1}, question ${qi + 1}`);
+        const questionText = String(q.question || oldQuestion?.question || "").trim();
+        if (!questionText) throw validationError(`Module ${mi + 1}, question ${qi + 1}: question is required`);
+        const normalized = normalizeAnswerIndex(q, mi, qi);
+        return { ...(oldQuestion?._id ? { _id: oldQuestion._id } : {}), question: questionText, ...normalized };
+      });
+      assessment = {
+        ...(oldAssessment?._id ? { _id: oldAssessment._id } : {}),
+        title: String(a.title || oldAssessment?.title || `${title} Assessment`).trim(),
+        passingPercentage: Number(a.passingPercentage ?? oldAssessment?.passingPercentage ?? 50),
+        questions,
+        isPublished: toBoolean(a.isPublished, oldAssessment?.isPublished !== false),
+      };
+      if (!Number.isFinite(assessment.passingPercentage) || assessment.passingPercentage < 0 || assessment.passingPercentage > 100) {
+        throw validationError(`Module ${mi + 1}: passing percentage must be between 0 and 100`);
+      }
+    } else if (input.assessment === undefined && oldModule?.assessment) {
+      assessment = oldModule.assessment.toObject ? oldModule.assessment.toObject() : oldModule.assessment;
+    }
+
+    result.push({
+      ...(oldModule?._id ? { _id: oldModule._id } : {}), title,
+      description: String(input.description ?? oldModule?.description ?? "").trim(),
+      order: validOrder(input.order, mi + 1, `Module ${mi + 1}`), chapters, assessment,
+      isPublished: toBoolean(input.isPublished, oldModule?.isPublished !== false),
+    });
+  }
+  return result;
+}
+
 async function applyProductFields(product, body, files, creating, createdMedia) {
   const title = String(body.title ?? product.title ?? "").trim();
   const categoryId = String(body.categoryId || body.category || product.category || "").trim();
@@ -160,6 +267,10 @@ async function applyProductFields(product, body, files, creating, createdMedia) 
       };
     }
   }
+
+  if (body.modules !== undefined) {
+    product.modules = await buildModules(product, body.modules, files, createdMedia);
+  }
 }
 
 
@@ -191,9 +302,17 @@ async function refreshEnrollmentProgress(product) {
 
 function sortedProduct(product, canAccess = false, admin = false) {
   const data = typeof product.toObject === "function" ? product.toObject() : structuredClone(product);
-  if (data.courseVideo) {
-    data.courseVideo.youtubeUrl = admin || canAccess ? data.courseVideo.youtubeUrl : "";
-  }
+  if (data.courseVideo) data.courseVideo.youtubeUrl = admin || canAccess ? data.courseVideo.youtubeUrl : "";
+  data.modules = (data.modules || []).sort((a, b) => a.order - b.order).map((module) => {
+    module.chapters = (module.chapters || []).sort((a, b) => a.order - b.order).map((chapter) => {
+      if (!admin && !canAccess) chapter.notePdf = null;
+      return chapter;
+    });
+    if (!admin && module.assessment?.questions) {
+      module.assessment.questions = module.assessment.questions.map(({ correctAnswerIndex, ...question }) => question);
+    }
+    return module;
+  });
   return data;
 }
 

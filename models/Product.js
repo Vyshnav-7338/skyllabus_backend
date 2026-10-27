@@ -10,6 +10,43 @@ const courseVideoSchema = new mongoose.Schema({
   isPublished: { type: Boolean, default: true },
 }, { timestamps: true });
 
+const chapterSchema = new mongoose.Schema({
+  title: { type: String, required: true, trim: true },
+  description: { type: String, trim: true, default: "" },
+  order: { type: Number, min: 0, default: 0 },
+  noteTitle: { type: String, trim: true, default: "" },
+  notePdf: { type: fileSchema, default: null },
+  isPublished: { type: Boolean, default: true },
+}, { timestamps: true });
+
+const assessmentQuestionSchema = new mongoose.Schema({
+  question: { type: String, required: true, trim: true },
+  options: {
+    type: [{ type: String, trim: true }],
+    validate: {
+      validator: (value) => Array.isArray(value) && value.length === 4 && value.every((item) => String(item || "").trim()),
+      message: "Each assessment question must have exactly 4 non-empty options",
+    },
+  },
+  correctAnswerIndex: { type: Number, required: true, min: 0, max: 3 },
+}, { timestamps: true });
+
+const assessmentSchema = new mongoose.Schema({
+  title: { type: String, trim: true, default: "Assessment" },
+  passingPercentage: { type: Number, min: 0, max: 100, default: 50 },
+  questions: { type: [assessmentQuestionSchema], default: [] },
+  isPublished: { type: Boolean, default: true },
+}, { timestamps: true });
+
+const moduleSchema = new mongoose.Schema({
+  title: { type: String, required: true, trim: true },
+  description: { type: String, trim: true, default: "" },
+  order: { type: Number, min: 0, default: 0 },
+  chapters: { type: [chapterSchema], default: [] },
+  assessment: { type: assessmentSchema, default: null },
+  isPublished: { type: Boolean, default: true },
+}, { timestamps: true });
+
 const productSchema = new mongoose.Schema({
   title: { type: String, required: true, trim: true },
   slug: { type: String, required: true, trim: true, lowercase: true, unique: true, index: true },
@@ -33,6 +70,7 @@ const productSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true, index: true },
   enrollmentCount: { type: Number, min: 0, default: 0 },
   courseVideo: { type: courseVideoSchema, default: null },
+  modules: { type: [moduleSchema], default: [] },
 }, { timestamps: true });
 
 module.exports = mongoose.model("Product", productSchema);
