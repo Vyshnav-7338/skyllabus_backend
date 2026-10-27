@@ -31,6 +31,11 @@ const JWT_SECRET='local-development-secret-change-before-production'
 const FRONTEND_URL =
   process.env.FRONTEND_URL || "http://68.178.168.48:5000/";
 
+// Public backend URL used by Stripe browser redirects.
+// paymentRouter must be mounted with: app.use("/payments", paymentRouter)
+const PAYMENT_PUBLIC_URL =
+  process.env.PAYMENT_PUBLIC_URL || "http://68.178.168.48:5000/payments";
+
 let stripe = null;
 
 // ============================================================
@@ -132,57 +137,33 @@ function paymentError(message, statusCode = 400) {
 // CHECKOUT SUCCESS / CANCEL URL
 // ============================================================
 
-function checkoutUrls(productId) {
-  const frontendUrl = String(FRONTEND_URL || "").trim();
+function checkoutUrls(productId, platform = "web") {
+  const paymentBase = String(PAYMENT_PUBLIC_URL || "").trim();
 
-  if (!frontendUrl) {
-    throw paymentError(
-      "Payment redirect URL is not configured",
-      503
-    );
+  if (!paymentBase) {
+    throw paymentError("Payment public URL is not configured", 503);
   }
 
   let base;
-
   try {
-    base = new URL(frontendUrl);
-  } catch (error) {
-    throw paymentError(
-      "Payment redirect URL is invalid",
-      503
+    base = new URL(
+      paymentBase.endsWith("/") ? paymentBase : `${paymentBase}/`
     );
+  } catch (_) {
+    throw paymentError("Payment public URL is invalid", 503);
   }
 
   if (!["http:", "https:"].includes(base.protocol)) {
-    throw paymentError(
-      "Payment redirect URL is invalid",
-      503
-    );
+    throw paymentError("Payment public URL is invalid", 503);
   }
 
-  const baseUrl = base.href.endsWith("/")
-    ? base.href
-    : `${base.href}/`;
+  const success = new URL("success", base);
+  success.searchParams.set("session_id", "{CHECKOUT_SESSION_ID}");
+  success.searchParams.set("platform", platform);
 
-  const success = new URL(
-    "payment/success",
-    baseUrl
-  );
-
-  success.searchParams.set(
-    "session_id",
-    "{CHECKOUT_SESSION_ID}"
-  );
-
-  const cancel = new URL(
-    "payment/cancel",
-    baseUrl
-  );
-
-  cancel.searchParams.set(
-    "course_id",
-    productId.toString()
-  );
+  const cancel = new URL("cancel", base);
+  cancel.searchParams.set("course_id", productId.toString());
+  cancel.searchParams.set("platform", platform);
 
   return {
     successUrl: success
@@ -191,7 +172,6 @@ function checkoutUrls(productId) {
         encodeURIComponent("{CHECKOUT_SESSION_ID}"),
         "{CHECKOUT_SESSION_ID}"
       ),
-
     cancelUrl: cancel.toString(),
   };
 }
@@ -220,11 +200,10 @@ async function getReusableSession(
     }
 
     // Stripe already received payment.
+    // Do NOT throw 409. Return the paid session so the caller can
+    // recover/complete enrollment idempotently.
     if (session.payment_status === "paid") {
-      throw paymentError(
-        "Payment is already being confirmed",
-        409
-      );
+      return session;
     }
 
     payment.paymentStatus =
@@ -277,6 +256,14 @@ router.post(
         req.body?.productId ||
         ""
       ).trim();
+
+      const platform = String(
+        req.body?.platform || "web"
+      ).trim().toLowerCase();
+
+      if (!["web", "android"].includes(platform)) {
+        throw paymentError("Invalid payment platform", 400);
+      }
 
       // --------------------------------------------------------
       // Validate course ID
@@ -403,11 +390,40 @@ router.post(
           );
 
         if (reusable) {
+          // If payment already succeeded but webhook/redirect processing
+          // has not finished yet, recover it here instead of returning 409.
+          if (reusable.payment_status === "paid") {
+            await completeCheckout(
+              reusable,
+              `checkout_recovery_${reusable.id}`
+            );
+
+            const enrollment = await Enrollment.findOne({
+              user: req.user._id,
+              product: product._id,
+              status: { $ne: "cancelled" },
+            });
+
+            return res.json({
+              success: true,
+              data: {
+                sessionId: reusable.id,
+                url: null,
+                alreadyPaid: true,
+                paymentStatus: "paid",
+                enrollmentStatus: enrollment ? "completed" : "pending",
+                enrolled: Boolean(enrollment),
+                courseId: product._id.toString(),
+              },
+            });
+          }
+
           return res.json({
             success: true,
             data: {
               sessionId: reusable.id,
               url: reusable.url,
+              alreadyPaid: false,
             },
           });
         }
@@ -447,11 +463,40 @@ router.post(
           );
 
         if (reusable) {
+          // If payment already succeeded but webhook/redirect processing
+          // has not finished yet, recover it here instead of returning 409.
+          if (reusable.payment_status === "paid") {
+            await completeCheckout(
+              reusable,
+              `checkout_recovery_${reusable.id}`
+            );
+
+            const enrollment = await Enrollment.findOne({
+              user: req.user._id,
+              product: product._id,
+              status: { $ne: "cancelled" },
+            });
+
+            return res.json({
+              success: true,
+              data: {
+                sessionId: reusable.id,
+                url: null,
+                alreadyPaid: true,
+                paymentStatus: "paid",
+                enrollmentStatus: enrollment ? "completed" : "pending",
+                enrolled: Boolean(enrollment),
+                courseId: product._id.toString(),
+              },
+            });
+          }
+
           return res.json({
             success: true,
             data: {
               sessionId: reusable.id,
               url: reusable.url,
+              alreadyPaid: false,
             },
           });
         }
@@ -464,7 +509,7 @@ router.post(
       const {
         successUrl,
         cancelUrl,
-      } = checkoutUrls(product._id);
+      } = checkoutUrls(product._id, platform);
 
       // --------------------------------------------------------
       // Stripe metadata
@@ -479,6 +524,8 @@ router.post(
 
         paymentId:
           payment._id.toString(),
+
+        platform,
       };
 
       // --------------------------------------------------------
@@ -830,6 +877,105 @@ async function completeCheckout(
     await databaseSession.endSession();
   }
 }
+
+// ============================================================
+// CHECKOUT BROWSER RETURN ROUTES
+// ============================================================
+
+// Stripe opens this URL after successful Checkout.
+// No JWT middleware here: Stripe/browser redirects do not contain the app JWT.
+// We verify the Checkout Session directly with Stripe.
+router.get("/success", async (req, res) => {
+  try {
+    const sessionId = String(req.query.session_id || "").trim();
+    const requestedPlatform = String(
+      req.query.platform || "web"
+    ).trim().toLowerCase();
+
+    if (!sessionId) {
+      return res.status(400).send("Missing Stripe session ID");
+    }
+
+    const stripeApi = stripeClient(req);
+    const session = await stripeApi.checkout.sessions.retrieve(sessionId);
+
+    if (!session || session.payment_status !== "paid") {
+      return res.status(400).send("Payment is not completed");
+    }
+
+    // Safe fallback if webhook delivery is slightly delayed.
+    await completeCheckout(
+      session,
+      `success_redirect_${session.id}`
+    );
+
+    const courseId = String(session.metadata?.courseId || "");
+    const platform = String(
+      session.metadata?.platform || requestedPlatform
+    ).toLowerCase();
+
+    if (platform === "android") {
+      const deepLink =
+        `skyllabus://payment/success` +
+        `?session_id=${encodeURIComponent(session.id)}` +
+        `&course_id=${encodeURIComponent(courseId)}`;
+
+      return res.redirect(302, deepLink);
+    }
+
+    // Web can show a simple confirmation page.
+    return res.status(200).send(`
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width,initial-scale=1">
+          <title>Payment Successful</title>
+        </head>
+        <body style="font-family:Arial,sans-serif;text-align:center;padding:60px 20px">
+          <h1>Payment Successful</h1>
+          <p>Your course enrollment has been completed.</p>
+        </body>
+      </html>
+    `);
+  } catch (error) {
+    console.error("Payment success redirect error:", error);
+    return res
+      .status(error.statusCode || 500)
+      .send("Unable to confirm payment");
+  }
+});
+
+router.get("/cancel", (req, res) => {
+  const courseId = String(req.query.course_id || "").trim();
+  const platform = String(req.query.platform || "web")
+    .trim()
+    .toLowerCase();
+
+  if (platform === "android") {
+    const deepLink =
+      `skyllabus://payment/cancel` +
+      `?course_id=${encodeURIComponent(courseId)}`;
+
+    return res.redirect(302, deepLink);
+  }
+
+  return res.status(200).send(`
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1">
+        <title>Payment Cancelled</title>
+      </head>
+      <body style="font-family:Arial,sans-serif;text-align:center;padding:60px 20px">
+        <h1>Payment Cancelled</h1>
+        <p>Your enrollment was not completed.</p>
+      </body>
+    </html>
+  `);
+});
+
 
 // ============================================================
 // STRIPE WEBHOOK
