@@ -485,64 +485,43 @@ router.post(
       // Create Stripe Checkout Session
       // --------------------------------------------------------
 
-      const session =
-        await stripeApi.checkout.sessions.create(
-          {
-            mode: "payment",
+const session =
+  await stripeApi.checkout.sessions.create({
+    mode: "payment",
 
-            // Explicitly use cards.
-            // This avoids Stripe automatic payment method
-            // selection when the account has no compatible
-            // automatic methods enabled.
-            payment_method_types: [
-              "card",
-            ],
+    payment_method_types: ["card"],
 
-            customer_email:
-              req.user.email,
+    customer_email: req.user.email,
 
-            line_items: [
-              {
-                quantity: 1,
+    line_items: [
+      {
+        quantity: 1,
+        price_data: {
+          currency,
+          unit_amount: amount,
 
-                price_data: {
-                  currency,
+          product_data: {
+            name: String(
+              product.title || "Course"
+            ).slice(0, 127),
 
-                  unit_amount:
-                    amount,
-
-                  product_data: {
-                    name: String(
-                      product.title ||
-                      "Course"
-                    ).slice(0, 127),
-
-                    metadata: {
-                      courseId:
-                        product._id.toString(),
-                    },
-                  },
-                },
-              },
-            ],
-
-            metadata,
-
-            payment_intent_data: {
-              metadata,
+            metadata: {
+              courseId: product._id.toString(),
             },
-
-            success_url:
-              successUrl,
-
-            cancel_url:
-              cancelUrl,
           },
-          {
-            idempotencyKey:
-              `skyllabus-checkout-${payment._id}`,
-          }
-        );
+        },
+      },
+    ],
+
+    metadata,
+
+    payment_intent_data: {
+      metadata,
+    },
+
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+  });
 
       // --------------------------------------------------------
       // Save Stripe Checkout ID
