@@ -254,8 +254,14 @@ async function applyProductFields(product, body, files, creating, createdMedia) 
     }
   }
 
-  if (body.modules !== undefined) {
-    product.modules = await buildModules(product, body.modules, files, createdMedia);
+  // Modules/assessments are sent as JSON text in the multipart form. Parse and
+  // assign them explicitly so Mongoose persists the nested subdocuments.
+  if (Object.prototype.hasOwnProperty.call(body, "modules")) {
+    const builtModules = await buildModules(product, body.modules, files, createdMedia);
+    product.set("modules", builtModules);
+    product.markModified("modules");
+  } else if (creating) {
+    product.set("modules", []);
   }
 }
 
@@ -387,6 +393,12 @@ router.post("/", productUpload, async (req, res) => {
     await product.save();
     committed = true;
     const persisted = await Product.findById(product._id).populate("category");
+    if (Object.prototype.hasOwnProperty.call(req.body, "modules")) {
+      const expectedModules = parseJsonField(req.body.modules, "Modules");
+      if ((persisted.modules || []).length !== expectedModules.length) {
+        throw new Error(`Modules persistence failed: expected ${expectedModules.length}, saved ${(persisted.modules || []).length}`);
+      }
+    }
     return res.status(201).json({ success: true, message: "Product created successfully", data: sortedProduct(persisted, true, true) });
   } catch (error) {
     if (!committed) await Promise.all(createdMedia.map((value) => futils.removeFileObject(value)));
@@ -408,6 +420,14 @@ router.put("/:id", productUpload, async (req, res) => {
     await applyProductFields(product, req.body, req.files, false, createdMedia);
     await product.save();
     committed = true;
+    // Reload after save to verify the nested module/assessment data really reached MongoDB.
+    const verifyPersisted = await Product.findById(product._id);
+    if (Object.prototype.hasOwnProperty.call(req.body, "modules")) {
+      const expectedModules = parseJsonField(req.body.modules, "Modules");
+      if ((verifyPersisted.modules || []).length !== expectedModules.length) {
+        throw new Error(`Modules persistence failed: expected ${expectedModules.length}, saved ${(verifyPersisted.modules || []).length}`);
+      }
+    }
     const currentVideoIds = new Set(allVideoIds(product));
     const removedVideoIds = [...oldVideoIds].filter((id) => !currentVideoIds.has(id));
     if (removedVideoIds.length) await VideoProgress.deleteMany({ product: product._id, videoId: { $in: removedVideoIds } });

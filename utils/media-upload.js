@@ -8,7 +8,6 @@ const stagingDirectory = path.join(os.tmpdir(), "skyllabus-upload-staging");
 fs.mkdirSync(stagingDirectory, { recursive: true });
 
 function isImageField(name) { return name === "thumbnail" || name === "banner"; }
-function isAssessmentJsonField(name) { return /^assessmentJson_\d+$/.test(name) || /^assessmentFile_\d+$/.test(name); }
 
 const storage = multer.diskStorage({
   destination: (_req, _file, callback) => callback(null, stagingDirectory),
@@ -21,10 +20,6 @@ const productUpload = multer({
   fileFilter: (_req, file, callback) => {
     if (isImageField(file.fieldname)) {
       return /^image\/(jpeg|png|webp)$/.test(file.mimetype) ? callback(null, true) : callback(new Error("Images must be JPEG, PNG, or WebP"));
-    }
-    if (isAssessmentJsonField(file.fieldname)) {
-      const ok = file.mimetype === "application/json" || file.mimetype === "text/json" || file.mimetype === "text/plain" || /\.json$/i.test(file.originalname || "");
-      return ok ? callback(null, true) : callback(new Error("Assessment must be a JSON file"));
     }
     return callback(new Error(`Unexpected upload field: ${file.fieldname}`));
   },
