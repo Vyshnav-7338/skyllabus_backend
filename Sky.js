@@ -29,6 +29,8 @@ const User = require("./models/User");
 const Wallet = require("./models/Wallet");
 const { sendApiError } = require("./utils/api-error");
 
+
+
 const app = express();
 const port = 5000;
 
@@ -37,6 +39,16 @@ app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 app.use("/admin", express.static(path.join(__dirname, "..", "admin")));
 app.use(cdnRouter);
+
+app.post(
+  "/payments/webhook",
+  express.raw({ type: "application/json" }),
+  stripeWebhook
+);
+
+
+
+app.use("/payments", paymentRouter);
 
 app.get("/", (_req, res) => {
   res.json({ success: true, message: "Skyllabus API is running" });
