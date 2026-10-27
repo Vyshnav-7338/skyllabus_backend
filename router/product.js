@@ -178,21 +178,11 @@ async function buildModules(product, rawModules, files, createdMedia) {
       const oldChapter = existingById(oldModule?.chapters || [], chapterInput.id || chapterInput._id, `Module ${mi + 1}, chapter ${ci + 1}`);
       const chapterTitle = String(chapterInput.title || oldChapter?.title || "").trim();
       if (!chapterTitle) throw validationError(`Module ${mi + 1}, chapter ${ci + 1}: title is required`);
-      const upload = uploadedFile(files, `chapterPdf_${mi}_${ci}`) || uploadedFile(files, `noteFile_${mi}_${ci}_0`) || uploadedFile(files, `noteFile_${mi}_${ci}`);
-      let notePdf = plainFile(oldChapter?.notePdf);
-      if (upload) {
-        notePdf = await futils.getFileObject(upload);
-        createdMedia.push(notePdf);
-      } else if (chapterInput.removeNotePdf === true || chapterInput.removeNotePdf === "true") {
-        notePdf = null;
-      }
       chapters.push({
         ...(oldChapter?._id ? { _id: oldChapter._id } : {}),
         title: chapterTitle,
         description: String(chapterInput.description ?? oldChapter?.description ?? "").trim(),
         order: validOrder(chapterInput.order, ci + 1, `Module ${mi + 1}, chapter ${ci + 1}`),
-        noteTitle: String(chapterInput.noteTitle ?? oldChapter?.noteTitle ?? `${chapterTitle} Notes`).trim(),
-        notePdf,
         isPublished: toBoolean(chapterInput.isPublished, oldChapter?.isPublished !== false),
       });
     }
@@ -329,7 +319,6 @@ function sortedProduct(product, canAccess = false, admin = false) {
   if (data.courseVideo) data.courseVideo.youtubeUrl = admin || canAccess ? data.courseVideo.youtubeUrl : "";
   data.modules = (data.modules || []).sort((a, b) => a.order - b.order).map((module) => {
     module.chapters = (module.chapters || []).sort((a, b) => a.order - b.order).map((chapter) => {
-      if (!admin && !canAccess) chapter.notePdf = null;
       return chapter;
     });
     if (!admin && module.assessment?.questions) {

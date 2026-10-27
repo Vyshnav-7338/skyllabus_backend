@@ -14,8 +14,6 @@ const chapterSchema = new mongoose.Schema({
   title: { type: String, required: true, trim: true },
   description: { type: String, trim: true, default: "" },
   order: { type: Number, min: 0, default: 0 },
-  noteTitle: { type: String, trim: true, default: "" },
-  notePdf: { type: fileSchema, default: null },
   isPublished: { type: Boolean, default: true },
 }, { timestamps: true });
 

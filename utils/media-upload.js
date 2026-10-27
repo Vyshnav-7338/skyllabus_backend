@@ -8,7 +8,6 @@ const stagingDirectory = path.join(os.tmpdir(), "skyllabus-upload-staging");
 fs.mkdirSync(stagingDirectory, { recursive: true });
 
 function isImageField(name) { return name === "thumbnail" || name === "banner"; }
-function isChapterPdfField(name) { return /^chapterPdf_\d+_\d+$/.test(name) || /^noteFile_\d+_\d+(?:_\d+)?$/.test(name); }
 function isAssessmentJsonField(name) { return /^assessmentJson_\d+$/.test(name) || /^assessmentFile_\d+$/.test(name); }
 
 const storage = multer.diskStorage({
@@ -22,9 +21,6 @@ const productUpload = multer({
   fileFilter: (_req, file, callback) => {
     if (isImageField(file.fieldname)) {
       return /^image\/(jpeg|png|webp)$/.test(file.mimetype) ? callback(null, true) : callback(new Error("Images must be JPEG, PNG, or WebP"));
-    }
-    if (isChapterPdfField(file.fieldname)) {
-      return file.mimetype === "application/pdf" ? callback(null, true) : callback(new Error("Chapter notes must be PDF files"));
     }
     if (isAssessmentJsonField(file.fieldname)) {
       const ok = file.mimetype === "application/json" || file.mimetype === "text/json" || file.mimetype === "text/plain" || /\.json$/i.test(file.originalname || "");

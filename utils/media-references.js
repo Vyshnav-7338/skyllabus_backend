@@ -11,7 +11,6 @@ function collectProductMedia(product) {
   if (product?.thumbnail) result.push(product.thumbnail);
   if (product?.banner) result.push(product.banner);
   for (const module of product?.modules || []) {
-    for (const chapter of module?.chapters || []) if (chapter?.notePdf) result.push(chapter.notePdf);
   }
   return result.filter((value) => mediaKey(value));
 }
@@ -20,7 +19,7 @@ async function isMediaReferenced(value) {
   const name = mediaKey(value);
   if (!name) return false;
   const [product, category, giveaway, user] = await Promise.all([
-    Product.exists({ $or: [{ "thumbnail.name": name }, { "banner.name": name }, { "modules.chapters.notePdf.name": name }] }),
+    Product.exists({ $or: [{ "thumbnail.name": name }, { "banner.name": name }] }),
     Category.exists({ "image.name": name }), Giveaway.exists({ "image.name": name }), User.exists({ "profilePhoto.name": name }),
   ]);
   return Boolean(product || category || giveaway || user);
