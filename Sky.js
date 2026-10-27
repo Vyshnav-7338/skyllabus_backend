@@ -3,7 +3,7 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const dns = require("dns");
-
+require("dotenv").config();
 // Fix MongoDB Atlas SRV DNS resolution on Windows/PM2
 dns.setServers([
   "8.8.8.8",
