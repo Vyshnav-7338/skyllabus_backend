@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Backups
+backup_data/
+
+# Temporary files
+tmp/
+
+# Logs
+*.log
+npm-debug.log*
