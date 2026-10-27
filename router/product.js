@@ -1,5 +1,4 @@
 const express = require("express");
-const fs = require("fs/promises");
 const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken");
 const Product = require("../models/Product");
@@ -76,21 +75,6 @@ function plainFile(value) {
   return typeof value.toObject === "function" ? value.toObject() : { ...value };
 }
 
-async function requireAdmin(req, res, next) {
-  try {
-    const header = String(req.headers.authorization || "");
-    if (!header.startsWith("Bearer ")) return res.status(401).json({ success: false, message: "Authentication required" });
-    const payload = jwt.verify(header.slice(7), process.env.JWT_SECRET);
-    const user = await User.findById(payload.id);
-    if (!user) return res.status(401).json({ success: false, message: "User no longer exists" });
-    if (user.role !== "admin") return res.status(403).json({ success: false, message: "Admin access required" });
-    req.user = user;
-    return next();
-  } catch (_error) {
-    return res.status(401).json({ success: false, message: "Invalid or expired token" });
-  }
-}
-
 async function optionalUser(req) {
   try {
     const header = String(req.headers.authorization || "");
@@ -145,19 +129,6 @@ function normalizeAnswerIndex(question, moduleIndex, questionIndex) {
   return { options, correctAnswerIndex: answer };
 }
 
-async function assessmentFromUpload(files, moduleIndex) {
-  const upload = uploadedFile(files, `assessmentJson_${moduleIndex}`) || uploadedFile(files, `assessmentFile_${moduleIndex}`);
-  if (!upload) return undefined;
-  let parsed;
-  try { parsed = JSON.parse(await fs.readFile(upload.path, "utf8")); }
-  catch (_error) { throw validationError(`Module ${moduleIndex + 1}: assessment JSON file is invalid`); }
-  // Accept {questions:[...]}, {assessment:{...}}, or a raw question array.
-  if (Array.isArray(parsed)) return { questions: parsed };
-  if (parsed && typeof parsed === "object" && parsed.assessment && typeof parsed.assessment === "object") return parsed.assessment;
-  if (parsed && typeof parsed === "object") return parsed;
-  throw validationError(`Module ${moduleIndex + 1}: assessment JSON must contain questions`);
-}
-
 async function buildModules(product, rawModules, files, createdMedia) {
   const modules = parseJsonField(rawModules, "Modules");
   if (!Array.isArray(modules)) throw validationError("Modules must be an array");
@@ -188,8 +159,9 @@ async function buildModules(product, rawModules, files, createdMedia) {
     }
 
     let assessment = null;
-    const uploadedAssessment = await assessmentFromUpload(files, mi);
-    let suppliedAssessment = uploadedAssessment !== undefined ? uploadedAssessment : input.assessment;
+    // Assessment JSON files are parsed only in the admin browser.
+    // The backend receives normal assessment data inside modules[].assessment.
+    let suppliedAssessment = input.assessment;
     if (typeof suppliedAssessment === "string" && suppliedAssessment !== "null") {
       suppliedAssessment = parseJsonField(suppliedAssessment, `Module ${mi + 1} assessment`);
     }
@@ -356,13 +328,11 @@ router.get("/", async (req, res) => {
       filter.$or = [{ title: { $regex: search, $options: "i" } }, { shortDescription: { $regex: search, $options: "i" } }, { description: { $regex: search, $options: "i" } }, { tags: { $regex: search, $options: "i" } }];
     }
     if (includeUnpublished) {
-      return requireAdmin(req, res, async () => {
-        const [products, total] = await Promise.all([
-          Product.find(filter).populate("category").sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
-          Product.countDocuments(filter),
-        ]);
-        return res.json({ success: true, data: products.map((product) => sortedProduct(product, true, true)), meta: { page, limit, total, pages: Math.ceil(total / limit) } });
-      });
+      const [products, total] = await Promise.all([
+        Product.find(filter).populate("category").sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
+        Product.countDocuments(filter),
+      ]);
+      return res.json({ success: true, data: products.map((product) => sortedProduct(product, true, true)), meta: { page, limit, total, pages: Math.ceil(total / limit) } });
     }
     const [products, total] = await Promise.all([
       Product.find(filter).populate("category").sort({ isFeatured: -1, createdAt: -1 }).skip((page - 1) * limit).limit(limit),
@@ -384,7 +354,7 @@ router.get("/category/:categoryId", async (req, res) => {
   }
 });
 
-router.get("/:id/manage", requireAdmin, async (req, res) => {
+router.get("/:id/manage", async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: "Invalid product ID" });
     const product = await Product.findById(req.params.id).populate("category");
@@ -426,7 +396,7 @@ router.post("/", productUpload, async (req, res) => {
   }
 });
 
-router.put("/:id", requireAdmin, productUpload, async (req, res) => {
+router.put("/:id", productUpload, async (req, res) => {
   const createdMedia = [];
   let committed = false;
   try {
@@ -453,7 +423,7 @@ router.put("/:id", requireAdmin, productUpload, async (req, res) => {
   }
 });
 
-router.delete("/:id", requireAdmin, async (req, res) => {
+router.delete("/:id", async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: "Invalid product ID" });
     if (await Enrollment.exists({ product: req.params.id })) return res.status(409).json({ success: false, message: "This product has enrollment history and cannot be deleted" });
