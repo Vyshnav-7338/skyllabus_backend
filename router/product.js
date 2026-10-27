@@ -1,4 +1,5 @@
 const express = require("express");
+const fs = require("fs/promises");
 const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken");
 const Product = require("../models/Product");
@@ -129,7 +130,12 @@ function normalizeAnswerIndex(question, moduleIndex, questionIndex) {
     throw validationError(`Module ${moduleIndex + 1}, question ${questionIndex + 1}: exactly 4 non-empty options are required`);
   }
   let answer = question.correctAnswerIndex ?? question.answerIndex ?? question.answer ?? question.correctAnswer;
-  if (typeof answer === "string" && !/^\d+$/.test(answer.trim())) answer = options.indexOf(answer.trim());
+  if (typeof answer === "string" && !/^\d+$/.test(answer.trim())) {
+    const raw = answer.trim();
+    const letter = raw.toLowerCase();
+    if (/^[a-d]$/.test(letter)) answer = letter.charCodeAt(0) - 97;
+    else answer = options.findIndex((option) => option.toLowerCase() === raw.toLowerCase());
+  }
   answer = Number(answer);
   // Accept UI values 1-4 when answer/correctAnswer is supplied, but keep explicit correctAnswerIndex as 0-3.
   if (question.correctAnswerIndex === undefined && question.answerIndex === undefined && Number.isInteger(answer) && answer >= 1 && answer <= 4) answer -= 1;
@@ -137,6 +143,19 @@ function normalizeAnswerIndex(question, moduleIndex, questionIndex) {
     throw validationError(`Module ${moduleIndex + 1}, question ${questionIndex + 1}: answer must select one of the 4 options`);
   }
   return { options, correctAnswerIndex: answer };
+}
+
+async function assessmentFromUpload(files, moduleIndex) {
+  const upload = uploadedFile(files, `assessmentJson_${moduleIndex}`) || uploadedFile(files, `assessmentFile_${moduleIndex}`);
+  if (!upload) return undefined;
+  let parsed;
+  try { parsed = JSON.parse(await fs.readFile(upload.path, "utf8")); }
+  catch (_error) { throw validationError(`Module ${moduleIndex + 1}: assessment JSON file is invalid`); }
+  // Accept {questions:[...]}, {assessment:{...}}, or a raw question array.
+  if (Array.isArray(parsed)) return { questions: parsed };
+  if (parsed && typeof parsed === "object" && parsed.assessment && typeof parsed.assessment === "object") return parsed.assessment;
+  if (parsed && typeof parsed === "object") return parsed;
+  throw validationError(`Module ${moduleIndex + 1}: assessment JSON must contain questions`);
 }
 
 async function buildModules(product, rawModules, files, createdMedia) {
@@ -179,8 +198,13 @@ async function buildModules(product, rawModules, files, createdMedia) {
     }
 
     let assessment = null;
-    if (input.assessment !== null && input.assessment !== "null" && input.assessment !== undefined) {
-      const a = input.assessment || {};
+    const uploadedAssessment = await assessmentFromUpload(files, mi);
+    let suppliedAssessment = uploadedAssessment !== undefined ? uploadedAssessment : input.assessment;
+    if (typeof suppliedAssessment === "string" && suppliedAssessment !== "null") {
+      suppliedAssessment = parseJsonField(suppliedAssessment, `Module ${mi + 1} assessment`);
+    }
+    if (suppliedAssessment !== null && suppliedAssessment !== "null" && suppliedAssessment !== undefined) {
+      const a = suppliedAssessment || {};
       const oldAssessment = oldModule?.assessment;
       const rawQuestions = a.questions ?? [];
       if (!Array.isArray(rawQuestions)) throw validationError(`Module ${mi + 1}: assessment questions must be an array`);
@@ -201,7 +225,7 @@ async function buildModules(product, rawModules, files, createdMedia) {
       if (!Number.isFinite(assessment.passingPercentage) || assessment.passingPercentage < 0 || assessment.passingPercentage > 100) {
         throw validationError(`Module ${mi + 1}: passing percentage must be between 0 and 100`);
       }
-    } else if (input.assessment === undefined && oldModule?.assessment) {
+    } else if (suppliedAssessment === undefined && oldModule?.assessment) {
       assessment = oldModule.assessment.toObject ? oldModule.assessment.toObject() : oldModule.assessment;
     }
 
