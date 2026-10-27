@@ -16,7 +16,7 @@ let stripe;
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
-
+console.log("STRIPE_SECRET_KEY", STRIPE_SECRET_KEY);
 function stripeClient(req) {
   if (req?.app?.locals?.stripe) return req.app.locals.stripe;
   if (!STRIPE_SECRET_KEY) {
