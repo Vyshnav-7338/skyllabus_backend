@@ -1,7 +1,6 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const myRouter = express.Router();
-var auth = require('../auth/authenticate');
 var config = require("../config")
 const fs = require('fs');
 
