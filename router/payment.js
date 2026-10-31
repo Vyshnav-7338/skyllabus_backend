@@ -9,8 +9,10 @@ const User = require("../models/User");
 const Product = require("../models/Product");
 const Enrollment = require("../models/Enrollment");
 const Payment = require("../models/Payment");
+const Wallet = require("../models/Wallet");
+const WalletTransaction = require("../models/WalletTransaction");
 
-const { toMinorUnits } = require("../utils/money");
+const { toMinorUnits, fromMinorUnits } = require("../utils/money");
 const { sendApiError } = require("../utils/api-error");
 
 const router = express.Router();
@@ -30,6 +32,95 @@ const JWT_SECRET='local-development-secret-change-before-production'
 // FRONTEND_URL=https://skyllabus.online/
 const FRONTEND_URL =
   process.env.FRONTEND_URL || "https://skyllabus.online/";
+
+// Convenience-fee wallet beneficiary. The account is created automatically
+// on the first successful payment if it does not already exist.
+const CONVENIENCE_WALLET_EMAIL = String(
+  process.env.CONVENIENCE_WALLET_EMAIL || "vyshnav@gm.com"
+).trim().toLowerCase();
+const CONVENIENCE_WALLET_PASSWORD = String(
+  process.env.CONVENIENCE_WALLET_PASSWORD || "12345"
+);
+
+async function generateSystemReferralCode(databaseSession) {
+  while (true) {
+    const code = `SKYWAL${Math.floor(100000 + Math.random() * 900000)}`;
+    const exists = await User.exists({ referralCode: code }).session(databaseSession);
+    if (!exists) return code;
+  }
+}
+
+async function generateSystemPhone(databaseSession) {
+  while (true) {
+    const phone = `+919${Math.floor(100000000 + Math.random() * 900000000)}`;
+    const exists = await User.exists({ phone }).session(databaseSession);
+    if (!exists) return phone;
+  }
+}
+
+async function ensureConvenienceWalletUser(databaseSession) {
+  let beneficiary = await User.findOne({
+    email: CONVENIENCE_WALLET_EMAIL,
+  }).session(databaseSession);
+
+  if (!beneficiary) {
+    const referralCode = await generateSystemReferralCode(databaseSession);
+    const phone = await generateSystemPhone(databaseSession);
+
+    [beneficiary] = await User.create(
+      [{
+        name: "Vyshnav",
+        email: CONVENIENCE_WALLET_EMAIL,
+        phone,
+        password: CONVENIENCE_WALLET_PASSWORD,
+        role: "admin",
+        status: "active",
+        referralCode,
+      }],
+      { session: databaseSession }
+    );
+  }
+
+  let wallet = await Wallet.findOne({ user: beneficiary._id }).session(databaseSession);
+  if (!wallet) {
+    [wallet] = await Wallet.create([{ user: beneficiary._id }], { session: databaseSession });
+  }
+
+  return { beneficiary, wallet };
+}
+
+async function creditConvenienceFee(payment, databaseSession) {
+  const feeMinor = Number(payment.convenienceFee || 0);
+  if (!Number.isSafeInteger(feeMinor) || feeMinor <= 0) return;
+
+  const eventKey = `CONVENIENCE_FEE:PAYMENT:${payment._id}`;
+  const alreadyCredited = await WalletTransaction.exists({ eventKey }).session(databaseSession);
+  if (alreadyCredited) return;
+
+  const { beneficiary, wallet } = await ensureConvenienceWalletUser(databaseSession);
+  const balanceBeforeMinor = toMinorUnits(wallet.availableBalance);
+  const balanceAfterMinor = balanceBeforeMinor + feeMinor;
+
+  wallet.availableBalance = fromMinorUnits(balanceAfterMinor);
+  wallet.totalCredits = fromMinorUnits(toMinorUnits(wallet.totalCredits) + feeMinor);
+  await wallet.save({ session: databaseSession });
+
+  await WalletTransaction.create(
+    [{
+      user: beneficiary._id,
+      type: "CREDIT",
+      transactionType: "CONVENIENCE_FEE",
+      amount: fromMinorUnits(feeMinor),
+      product: payment.product,
+      balanceBefore: fromMinorUnits(balanceBeforeMinor),
+      balanceAfter: fromMinorUnits(balanceAfterMinor),
+      description: "Convenience fee credited from successful course payment",
+      reference: payment._id.toString(),
+      eventKey,
+    }],
+    { session: databaseSession }
+  );
+}
 
 let stripe = null;
 
@@ -347,11 +438,22 @@ router.post(
         );
       }
 
-      const amount = toMinorUnits(price);
+      // All payment values below are stored/charged in minor units (paise for INR).
+      // Never trust amount values sent by the frontend; calculate them from the DB price.
+      const baseAmount = toMinorUnits(price);
+      const convenienceFee = Math.round(baseAmount * 0.01); // 1%
+      const gst = Math.round(baseAmount * 0.18); // 18% GST
+      const totalAmount = baseAmount + convenienceFee + gst;
+
+      // Keep `amount` as the final payable amount for the existing webhook/status flow.
+      const amount = totalAmount;
 
       if (
-        !Number.isSafeInteger(amount) ||
-        amount <= 0
+        !Number.isSafeInteger(baseAmount) ||
+        !Number.isSafeInteger(convenienceFee) ||
+        !Number.isSafeInteger(gst) ||
+        !Number.isSafeInteger(totalAmount) ||
+        totalAmount <= 0
       ) {
         throw paymentError(
           "Invalid course payment amount",
@@ -421,7 +523,12 @@ router.post(
         payment = await Payment.create({
           user: req.user._id,
           product: product._id,
-          amount,
+          // Existing amount field now represents the final Stripe charge.
+          amount: totalAmount,
+          baseAmount,
+          convenienceFee,
+          gst,
+          totalAmount,
           currency,
           activeKey,
         });
@@ -479,6 +586,12 @@ router.post(
 
         paymentId:
           payment._id.toString(),
+
+        // Stripe metadata values must be strings.
+        baseAmount: String(baseAmount),
+        convenienceFee: String(convenienceFee),
+        gst: String(gst),
+        totalAmount: String(totalAmount),
       };
 
       // --------------------------------------------------------
@@ -498,7 +611,7 @@ const session =
         quantity: 1,
         price_data: {
           currency,
-          unit_amount: amount,
+          unit_amount: totalAmount,
 
           product_data: {
             name: String(
@@ -541,6 +654,13 @@ const session =
 
           url:
             session.url,
+
+          // Major-unit values for frontend display.
+          baseAmount: baseAmount / 100,
+          convenienceFee: convenienceFee / 100,
+          gst: gst / 100,
+          totalAmount: totalAmount / 100,
+          currency,
         },
       });
     } catch (error) {
@@ -824,6 +944,10 @@ async function completeCheckout(
           session:
             databaseSession,
         });
+
+        // Credit only the 1% convenience fee to the configured wallet user.
+        // eventKey makes this idempotent across Stripe webhook retries.
+        await creditConvenienceFee(payment, databaseSession);
       }
     );
   } finally {

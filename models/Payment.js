@@ -6,7 +6,13 @@ const paymentSchema = new mongoose.Schema(
     product: { type: mongoose.Schema.Types.ObjectId, ref: "Product", required: true, index: true },
     checkoutSessionId: { type: String, trim: true, unique: true, sparse: true },
     paymentIntentId: { type: String, trim: true, index: true, sparse: true },
+    // Monetary values are stored in the currency's minor unit (paise for INR).
+    // `amount` is retained for compatibility and equals totalAmount.
     amount: { type: Number, required: true, min: 0 },
+    baseAmount: { type: Number, required: true, min: 0 },
+    convenienceFee: { type: Number, required: true, min: 0, default: 0 },
+    gst: { type: Number, required: true, min: 0, default: 0 },
+    totalAmount: { type: Number, required: true, min: 0 },
     currency: { type: String, required: true, trim: true, lowercase: true },
     paymentStatus: {
       type: String,

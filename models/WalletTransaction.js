@@ -7,7 +7,7 @@ const walletTransactionSchema = new mongoose.Schema(
     type: { type: String, enum: ["CREDIT", "DEBIT"], required: true, index: true },
     transactionType: {
       type: String,
-      enum: ["REFERRAL_REWARD", "COURSE_ENROLLMENT", "ADMIN_ADJUSTMENT"],
+      enum: ["REFERRAL_REWARD", "COURSE_ENROLLMENT", "ADMIN_ADJUSTMENT", "CONVENIENCE_FEE"],
       required: true,
       index: true,
     },
