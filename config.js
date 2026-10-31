@@ -1,8 +1,8 @@
 module.exports = {
-    "live": false,
+    "live": true,
     "emailsend": true,
-    "cdndir_local": "/home/tomercon/lern/cdn/",//LOCAL
-    "cdndir_live":"/home/tomercon/lern/cdn/",//LIVE
+    "cdndir_local": "/home/tomercon/skyllabus/cdn/",//LOCAL
+    "cdndir_live":"/home/tomercon/skyllabus/cdn/",//LIVE
     // "cdndir_live":"D:/cdn/",//LIVE
     'apiUrl_local': 'http://68.178.163.246:7001', // LOCAL API URL
     'apiUrl_live': 'http://68.178.163.246:7001', // LIVE API URL
