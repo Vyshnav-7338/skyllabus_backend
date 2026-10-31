@@ -1,95 +1,81 @@
-const fs = require("fs");
-const path = require("path");
-const express = require("express");
-const jwt = require("jsonwebtoken");
-const { resolveMediaPath } = require("../utils/fileutils");
-const Enrollment = require("../models/Enrollment");
-const Product = require("../models/Product");
-const User = require("../models/User");
-const ChapterPdf = require("../models/ChapterPdf");
+const express = require('express');
+const bodyParser = require('body-parser');
+const myRouter = express.Router();
+var auth = require('../auth/authenticate');
+var config = require("../config")
+const fs = require('fs');
 
-const router = express.Router();
-JWT_SECRET='local-development-secret-change-before-production'
+myRouter.use(bodyParser.json());
+var cdndir = config.live ? config.cdndir_live : config.cdndir_local
+//GET ALL
+myRouter.get(`/cdn`, async (req, res) => {
+    console.log("cdn called")//
+    var fileid = req.query.file;
+    console.log(fileid)
+    res.sendFile(cdndir + fileid)
+})
 
-const mimeByExtension = {
-  ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime",
-  ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp",
-  ".pdf": "application/pdf", ".txt": "text/plain; charset=utf-8", ".m3u8": "application/vnd.apple.mpegurl", ".ts": "video/mp2t",
-  ".doc": "application/msword", ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  ".ppt": "application/vnd.ms-powerpoint", ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-};
 
-function streamFile(req, res, relativeName) {
-  const filePath = resolveMediaPath(relativeName);
-  if (!filePath) return res.status(400).json({ success: false, message: "Invalid media path" });
-  let stat;
-  try {
-    stat = fs.statSync(filePath);
-  } catch (_error) {
-    return res.status(404).json({ success: false, message: "Media not found" });
-  }
-  if (!stat.isFile()) return res.status(404).json({ success: false, message: "Media not found" });
-  const range = req.headers.range;
-  res.setHeader("Content-Type", mimeByExtension[path.extname(filePath).toLowerCase()] || "application/octet-stream");
-  res.setHeader("Accept-Ranges", "bytes");
-  res.setHeader("Content-Disposition", `inline; filename="${path.basename(filePath).replace(/"/g, "")}"`);
-  if (!range) {
-    res.setHeader("Content-Length", stat.size);
-    return fs.createReadStream(filePath).pipe(res);
-  }
-  const match = /^bytes=(\d*)-(\d*)$/.exec(range);
-  if (!match) return res.status(416).set("Content-Range", `bytes */${stat.size}`).end();
-  const start = match[1] ? Number(match[1]) : 0;
-  const end = match[2] ? Number(match[2]) : stat.size - 1;
-  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || start >= stat.size) {
-    return res.status(416).set("Content-Range", `bytes */${stat.size}`).end();
-  }
-  const boundedEnd = Math.min(end, stat.size - 1);
-  res.status(206);
-  res.setHeader("Content-Range", `bytes ${start}-${boundedEnd}/${stat.size}`);
-  res.setHeader("Content-Length", boundedEnd - start + 1);
-  return fs.createReadStream(filePath, { start, end: boundedEnd }).pipe(res);
-}
+myRouter.delete(`/cdn`, async (req, res) => {
+    console.log("Delete CDN called");
 
-async function authorizeCourseVideo(req, res, next) {
-  try {
-    const fileName = String(req.query.file || "").replace(/\\/g, "/").replace(/^\/+/, "");
-    let product = await Product.findOne({ "courseVideo.file.name": fileName }).select("_id");
-    if (!product) {
-      const chapterPdf = await ChapterPdf.findOne({ "pdfFile.name": fileName }).select("product");
-      if (chapterPdf) product = { _id: chapterPdf.product };
+    var fileid = req.query.file;
+    if (!fileid) {
+        return res.status(400).send("File ID is required");
     }
-    if (!product) return next();
+    var filePath = cdndir + fileid;
 
-    const header = String(req.headers.authorization || "");
-    if (!header.startsWith("Bearer ")) {
-      return res.status(401).json({ success: false, message: "Authentication required" });
+    if (!fs.existsSync(filePath)) {
+        return res.status(404).send("File not found");
     }
-    const payload = jwt.verify(header.slice(7), JWT_SECRET);
-    const user = await User.findById(payload.id).select("role status");
-    if (!user || user.status === "disabled") {
-      return res.status(401).json({ success: false, message: "User is unavailable" });
-    }
-    if (user.role === "admin") return next();
-    const enrolled = await Enrollment.exists({
-      user: user._id,
-      product: product._id,
-      status: { $ne: "cancelled" },
+
+    fs.unlink(filePath, (err) => {
+        if (err) {
+            console.error(err);
+            return res.status(500).send("Error deleting file");
+        }
+        console.log("File deleted successfully");
+        return res.status(200).send("File deleted successfully");
     });
-    if (!enrolled) {
-      return res.status(403).json({ success: false, message: "Enroll in this course to play its video" });
-    }
-    return next();
-  } catch (error) {
-    if (error?.name === "JsonWebTokenError" || error?.name === "TokenExpiredError") {
-      return res.status(401).json({ success: false, message: "Invalid or expired token" });
-    }
-    return next(error);
-  }
-}
+});
 
-router.get("/cdn", authorizeCourseVideo, (req, res) => streamFile(req, res, req.query.file));
-router.get("/thumb/:file", (req, res) => streamFile(req, res, `thumb/${req.params.file}`));
-router.get("/hls/:videoId/:file", (req, res) => streamFile(req, res, `hls/${req.params.videoId}/${req.params.file}`));
+// DOWNLOAD File from CDN
+myRouter.get('/download', async (req, res) => {
+    const fileid = req.query.file;
+    console.log("Download request for file:", fileid);
 
-module.exports = router;
+    if (!fileid) {
+        return res.status(400).send("File ID is required");
+    }
+    const filePath = cdndir + fileid;
+    if (!fs.existsSync(filePath)) {
+        return res.status(404).send("File not found");
+    }
+    res.download(filePath, fileid, (err) => {
+        if (err) {
+            console.error("Error downloading file:", err);
+            return res.status(500).send("Error downloading file");
+        }
+    });
+});
+
+myRouter.get('/openFile', async (req, res) => {
+    const fileid = req.query.file;
+    console.log("Opening request for file:", fileid);
+
+    if (!fileid) {
+        return res.status(400).send("File ID is required");
+    }
+    const filePath = cdndir + fileid;
+    if (!fs.existsSync(filePath)) {
+        return res.status(404).send("File not found");
+    }
+    res.sendFile(filePath, fileid, (err) => {
+        if (err) {
+            console.error("Error Opening file:", err);
+            return res.status(500).send("Error Opening file");
+        }
+    });
+});
+
+module.exports = myRouter
