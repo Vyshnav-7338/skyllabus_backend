@@ -33,6 +33,8 @@ const app = express();
 const port = 5000;
 
 app.use(cors());
+app.post("/api/payments/stripe/webhook", express.raw({ type: "application/json" }), stripeWebhook);
+
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 app.use("/admin", express.static(path.join(__dirname, "..", "admin")));
@@ -58,7 +60,6 @@ app.get("/", (_req, res) => {
   res.json({ success: true, message: "Skyllabus API is running" });
 });
 app.use("/api/payments", paymentRouter);
-app.post("/api/payments/stripe/webhook", express.raw({ type: "application/json" }), stripeWebhook);
 
 app.use("/api/auth", authRouter);
 app.use("/api/user", userRouter);
