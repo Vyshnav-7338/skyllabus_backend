@@ -11,6 +11,8 @@ const Enrollment = require("../models/Enrollment");
 const Payment = require("../models/Payment");
 const Wallet = require("../models/Wallet");
 const WalletTransaction = require("../models/WalletTransaction");
+const ReferralSettings = require("../models/ReferralSettings");
+const ReferralCommission = require("../models/ReferralCommission");
 
 const { toMinorUnits, fromMinorUnits } = require("../utils/money");
 const { sendApiError } = require("../utils/api-error");
@@ -87,6 +89,69 @@ async function ensureConvenienceWalletUser(databaseSession) {
   }
 
   return { beneficiary, wallet };
+}
+
+async function creditEnrollmentReferralRewards(payment, enrollment, databaseSession) {
+  const sourceUser = await User.findById(payment.user).session(databaseSession);
+  if (!sourceUser?.referredBy) return;
+
+  const settings = await ReferralSettings.findOneAndUpdate(
+    { key: "default" },
+    { $setOnInsert: { key: "default" } },
+    { returnDocument: "after", upsert: true, runValidators: true, session: databaseSession }
+  );
+  if (!settings?.isActive) return;
+
+  const visited = new Set([sourceUser._id.toString()]);
+  let upline = await User.findById(sourceUser.referredBy).session(databaseSession);
+
+  for (let level = 1; level <= 5 && upline; level += 1) {
+    const uplineId = upline._id.toString();
+    if (visited.has(uplineId)) throw paymentError("Invalid referral hierarchy", 409);
+    visited.add(uplineId);
+
+    const amountMinor = toMinorUnits(settings[`level${level}Reward`] || 0);
+    const eventKey = `ENROLLMENT_REFERRAL:${enrollment._id}:UPLINE:${upline._id}:LEVEL:${level}`;
+    const exists = await WalletTransaction.exists({ eventKey }).session(databaseSession);
+
+    if (amountMinor > 0 && !exists) {
+      let wallet = await Wallet.findOne({ user: upline._id }).session(databaseSession);
+      if (!wallet) [wallet] = await Wallet.create([{ user: upline._id }], { session: databaseSession });
+
+      const beforeMinor = toMinorUnits(wallet.availableBalance);
+      wallet.availableBalance = fromMinorUnits(beforeMinor + amountMinor);
+      wallet.totalCredits = fromMinorUnits(toMinorUnits(wallet.totalCredits) + amountMinor);
+      await wallet.save({ session: databaseSession });
+
+      await WalletTransaction.create([{
+        user: upline._id,
+        type: "CREDIT",
+        transactionType: "REFERRAL_REWARD",
+        amount: fromMinorUnits(amountMinor),
+        referralLevel: level,
+        referredUser: sourceUser._id,
+        product: payment.product,
+        balanceBefore: fromMinorUnits(beforeMinor),
+        balanceAfter: wallet.availableBalance,
+        description: `Level ${level} referral enrollment reward`,
+        reference: enrollment._id.toString(),
+        eventKey,
+      }], { session: databaseSession });
+
+      await ReferralCommission.create([{
+        beneficiary: upline._id,
+        sourceUser: sourceUser._id,
+        level,
+        amount: fromMinorUnits(amountMinor),
+        triggerType: "enrollment",
+        status: "credited",
+      }], { session: databaseSession });
+    }
+
+    upline = upline.referredBy
+      ? await User.findById(upline.referredBy).session(databaseSession)
+      : null;
+  }
 }
 
 async function creditConvenienceFee(payment, databaseSession) {
@@ -945,8 +1010,8 @@ async function completeCheckout(
             databaseSession,
         });
 
-        // Credit only the 1% convenience fee to the configured wallet user.
-        // eventKey makes this idempotent across Stripe webhook retries.
+        // Enrollment is complete here: credit referral rewards once, then convenience fee.
+        await creditEnrollmentReferralRewards(payment, enrollment, databaseSession);
         await creditConvenienceFee(payment, databaseSession);
       }
     );

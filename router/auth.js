@@ -13,7 +13,32 @@ const router = express.Router();
 JWT_SECRET='local-development-secret-change-before-production'
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const phonePattern = /^\+[1-9]\d{7,14}$/;
+const phonePattern = /^\\+[1-9]\\d{7,14}$/;
+
+const DEFAULT_REFERRER_EMAIL = String(
+  process.env.DEFAULT_REFERRER_EMAIL || "adminrefer@gmail.com"
+).trim().toLowerCase();
+const DEFAULT_REFERRER_PASSWORD = String(
+  process.env.DEFAULT_REFERRER_PASSWORD || "12345678"
+);
+
+async function ensureDefaultReferrer(session) {
+  let user = await User.findOne({ email: DEFAULT_REFERRER_EMAIL }).session(session);
+  if (user) return user;
+  const phone = `+918${Math.floor(100000000 + Math.random() * 900000000)}`;
+  [user] = await User.create([{
+    name: "Admin Refer",
+    email: DEFAULT_REFERRER_EMAIL,
+    phone,
+    password: DEFAULT_REFERRER_PASSWORD,
+    role: "admin",
+    status: "active",
+    referralCode: await generateReferralCode("ADMIN", session),
+    referredBy: null,
+  }], { session });
+  await Wallet.create([{ user: user._id }], { session });
+  return user;
+}
 
 function signToken(user) {
   return jwt.sign({ id: user._id.toString(), role: user.role }, JWT_SECRET, {
@@ -131,6 +156,8 @@ router.post("/signup", async (req, res) => {
         }).session(session);
         if (!referrer) throw signupError("Referral code is invalid");
         if (referrer.email === email || referrer.phone === phone) throw signupError("You cannot refer yourself");
+      } else {
+        referrer = await ensureDefaultReferrer(session);
       }
 
       [user] = await User.create([{
@@ -142,7 +169,7 @@ router.post("/signup", async (req, res) => {
         referredBy: referrer?._id || null,
       }], { session });
       await Wallet.create([{ user: user._id }], { session });
-      await creditReferralUplines(user, referrer, session);
+      // Referral rewards are credited only after a paid course enrollment completes.
     });
 
     const [persistedUser, persistedWallet] = await Promise.all([

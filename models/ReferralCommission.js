@@ -7,7 +7,7 @@ const referralCommissionSchema = new mongoose.Schema(
     sourceUser: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
     level: { type: Number, min: 1, max: 5, required: true },
     amount: { type: Number, min: 0, required: true, set: normalizeMoney },
-    triggerType: { type: String, enum: ["signup"], default: "signup", required: true },
+    triggerType: { type: String, enum: ["signup", "enrollment"], default: "signup", required: true },
     status: { type: String, enum: ["credited"], default: "credited", required: true },
   },
   { timestamps: true },
