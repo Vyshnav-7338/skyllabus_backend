@@ -27,9 +27,9 @@ const JWT_SECRET='local-development-secret-change-before-production'
 
 
 // You can move this to .env later:
-// FRONTEND_URL=http://68.178.168.48:5000/
+// FRONTEND_URL=https://skyllabus.online/
 const FRONTEND_URL =
-  process.env.FRONTEND_URL || "http://68.178.168.48:5000/";
+  process.env.FRONTEND_URL || "https://skyllabus.online/";
 
 let stripe = null;
 
