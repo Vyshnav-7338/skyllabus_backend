@@ -12,5 +12,4 @@ const chapterPdfSchema = new mongoose.Schema({
   isPublished: { type: Boolean, default: true, index: true },
 }, { timestamps: true });
 
-chapterPdfSchema.index({ product: 1, moduleId: 1, chapterId: 1 }, { unique: true });
 module.exports = mongoose.model("ChapterPdf", chapterPdfSchema);
