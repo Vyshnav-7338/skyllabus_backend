@@ -170,220 +170,47 @@ function findModule(product, moduleId) {
 //
 // =====================================================
 
+
+
 router.post(
   "/",
 
   async (req, res) => {
-
     try {
+      console.log("BODY:", req.body);
+      console.log("FILES:", req.files);
 
-      // =========================================
-      // FILES
-      // =========================================
+      const files = req.files || {};
 
-      const files =
-        req.files || {};
-
-
-      if (
-        !files["pdf"] ||
-        files["pdf"].length === 0
-      ) {
-
+      if (!files.pdf || !files.pdf.length) {
         return res.status(400).json({
           success: false,
-          message:
-            "PDF file is required"
+          message: "PDF file is required",
         });
-
       }
 
+      const body = req.body;
 
-      // =========================================
-      // FIND COURSE
-      // =========================================
+      body.pdf = await futils.getFileObject(
+        files["pdf"]
+      );
 
-      const product =
-        await findProduct(req);
+      console.log("PDF:", body.pdf);
 
-
-      if (!product) {
-
-        return res.status(404).json({
-          success: false,
-          message:
-            "Course not found"
-        });
-
-      }
-
-
-      // =========================================
-      // FIND MODULE
-      // =========================================
-
-      const moduleId =
-        String(
-          req.body.moduleId || ""
-        ).trim();
-
-
-      if (!moduleId) {
-
-        return res.status(400).json({
-          success: false,
-          message:
-            "Module ID is required"
-        });
-
-      }
-
-
-      const module =
-        findModule(
-          product,
-          moduleId
-        );
-
-
-      if (!module) {
-
-        return res.status(404).json({
-          success: false,
-          message:
-            "Module not found in this course"
-        });
-
-      }
-
-
-      // =========================================
-      // CHAPTER
-      // =========================================
-
-      const chapterTitle =
-        String(
-          req.body.chapterTitle ||
-          req.body.title ||
-          ""
-        ).trim();
-
-
-      if (!chapterTitle) {
-
-        return res.status(400).json({
-          success: false,
-          message:
-            "Chapter title is required"
-        });
-
-      }
-
-
-      const chapterDescription =
-        String(
-          req.body.chapterDescription ||
-          req.body.description ||
-          ""
-        ).trim();
-
-
-      // =========================================
-      // PDF
-      //
-      // SAME FORMAT AS YOUR EXISTING PROJECT
-      // =========================================
-
-      const pdf =
-        await futils.getFileObject(
-          files["pdf"]
-        );
-
-
-      if (!pdf) {
-
-        return res.status(500).json({
-          success: false,
-          message:
-            "Unable to process PDF file"
-        });
-
-      }
-
-
-      // =========================================
-      // SAVE
-      // =========================================
-
-      const chapterPdf =
-        await ChapterPdf.create({
-
-          product:
-            product._id,
-
-          courseName:
-            product.title,
-
-          moduleId:
-            module._id,
-
-          moduleTitle:
-            module.title,
-
-          chapterTitle,
-
-          chapterDescription,
-
-          pdf,
-
-          isPublished: true,
-
-          createdBy:
-            req.user._id
-
-        });
-
-
-      // =========================================
-      // RESPONSE
-      // =========================================
-
-      return res
-        .status(201)
-        .json({
-
-          success: true,
-
-          message:
-            "Chapter PDF saved successfully",
-
-          data:
-            chapterPdf
-
-        });
-
+      // continue your ChapterPdf save here...
 
     } catch (error) {
-
       console.error(
-        "SAVE CHAPTER PDF ERROR:",
+        "CHAPTER PDF ERROR:",
         error
       );
 
-
-      return sendApiError(
-        res,
-        error,
-        {
-          fallbackMessage:
-            "Unable to save chapter PDF"
-        }
-      );
-
+      return res.status(500).json({
+        success: false,
+        message: "Unable to save chapter PDF",
+        error: error.message,
+      });
     }
-
   }
 );
-
-
 module.exports = router;
