@@ -6,6 +6,7 @@ const { resolveMediaPath } = require("../utils/fileutils");
 const Enrollment = require("../models/Enrollment");
 const Product = require("../models/Product");
 const User = require("../models/User");
+const ChapterPdf = require("../models/ChapterPdf");
 
 const router = express.Router();
 JWT_SECRET='local-development-secret-change-before-production'
@@ -53,7 +54,11 @@ function streamFile(req, res, relativeName) {
 async function authorizeCourseVideo(req, res, next) {
   try {
     const fileName = String(req.query.file || "").replace(/\\/g, "/").replace(/^\/+/, "");
-    const product = await Product.findOne({ "courseVideo.file.name": fileName }).select("_id");
+    let product = await Product.findOne({ "courseVideo.file.name": fileName }).select("_id");
+    if (!product) {
+      const chapterPdf = await ChapterPdf.findOne({ "pdfFile.name": fileName }).select("product");
+      if (chapterPdf) product = { _id: chapterPdf.product };
+    }
     if (!product) return next();
 
     const header = String(req.headers.authorization || "");

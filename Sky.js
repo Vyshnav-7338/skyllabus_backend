@@ -25,6 +25,8 @@ const rewardRouter = require("./router/reward");
 const walletRouter = require("./router/wallet");
 const referralRouter = require("./router/referral");
 const cdnRouter = require("./router/cdn");
+const chapterPdfRouter = require("./router/chapter-pdf");
+const moduleAssessmentRouter = require("./router/module-assessment");
 const User = require("./models/User");
 const Wallet = require("./models/Wallet");
 const { sendApiError } = require("./utils/api-error");
@@ -74,6 +76,8 @@ app.use("/api/giveaways", giveawayRouter);
 app.use("/api/rewards", rewardRouter);
 app.use("/api/wallet", walletRouter);
 app.use("/api/referral", referralRouter);
+app.use("/api/chapter-pdfs", chapterPdfRouter);
+app.use("/api/module-assessments", moduleAssessmentRouter);
 ADMIN_NAME='Skyllabus Admin'
 ADMIN_EMAIL='admin@skyllabus.com'
 ADMIN_PHONE='+910000000000'
