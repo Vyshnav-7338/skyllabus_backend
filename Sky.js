@@ -57,6 +57,15 @@ app.get("/.well-known/assetlinks.json", (req, res) => {
     }
   ]);
 });
+const fileUpload = require("express-fileupload");
+app.use(
+  fileUpload({
+    limits: {
+      fileSize: 50 * 1024 * 1024,
+    },
+    abortOnLimit: true,
+  })
+);
 
 app.get("/", (_req, res) => {
   res.json({ success: true, message: "Skyllabus API is running" });
