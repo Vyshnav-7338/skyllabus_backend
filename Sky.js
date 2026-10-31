@@ -37,7 +37,22 @@ app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 app.use("/admin", express.static(path.join(__dirname, "..", "admin")));
 app.use(cdnRouter);
-app.use(express.static('public'))
+app.use(express.static("public"));
+
+app.get("/.well-known/assetlinks.json", (req, res) => {
+  res.json([
+    {
+      relation: ["delegate_permission/common.handle_all_urls"],
+      target: {
+        namespace: "android_app",
+        package_name: "com.skyllabus.skyllabus",
+        sha256_cert_fingerprints: [
+          "F4:F6:BF:25:84:F7:6A:91:87:9B:C7:57:C3:DC:35:04:C7:FA:3B:11:38:F2:3E:92:37:14:86:11:12:A2:9D:4D"
+        ]
+      }
+    }
+  ]);
+});
 
 app.get("/", (_req, res) => {
   res.json({ success: true, message: "Skyllabus API is running" });
