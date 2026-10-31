@@ -1,5 +1,5 @@
 module.exports = {
-    "live": true,
+    "live": false,
     "emailsend": true,
     "cdndir_local": "/home/tomercon/skyllabus/cdn/",//LOCAL
     "cdndir_live":"/home/tomercon/skyllabus/cdn/",//LIVE
