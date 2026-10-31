@@ -552,44 +552,7 @@ router.get("/", async (req, res) => {
 
     let allowed = false;
 
-    // Admin can access
-    if (
-      user &&
-      user.role === "admin"
-    ) {
-      allowed = true;
-    }
-
-    // Enrolled user can access
-    if (
-      user &&
-      user.role !== "admin"
-    ) {
-      const enrollment =
-        await Enrollment.exists({
-          user: user._id,
-
-          product:
-            product._id,
-
-          status: {
-            $ne: "cancelled",
-          },
-        });
-
-      if (enrollment) {
-        allowed = true;
-      }
-    }
-
-    if (!allowed) {
-      return res.status(403).json({
-        success: false,
-        message:
-          "Enroll in this course to view assessments",
-      });
-    }
-
+   
     // -------------------------------------------
     // Load assessments
     // -------------------------------------------
