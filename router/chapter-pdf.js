@@ -24,6 +24,15 @@ async function findProduct(req) {
 }
 function findModule(product, moduleId) { return (product.modules || []).find((m) => m._id.toString() === String(moduleId)); }
 function findChapter(module, chapterId) { return (module?.chapters || []).find((c) => c._id.toString() === String(chapterId)); }
+async function resolveOrCreateChapter(product,module,body){
+  let chapter=body.chapterId?findChapter(module,body.chapterId):null;
+  if(chapter)return chapter;
+  const title=String(body.chapterTitle||"").trim();
+  if(!title)throw Object.assign(new Error("Chapter title is required"),{statusCode:400});
+  chapter=module.chapters.create({title,description:String(body.description||"").trim(),order:Number(body.order||module.chapters.length+1),isPublished:body.isPublished!=="false"});
+  module.chapters.push(chapter); product.markModified("modules"); await product.save();
+  return module.chapters[module.chapters.length-1];
+}
 
 router.get("/", async (req,res) => {
   try {
@@ -45,7 +54,7 @@ router.post("/", requireAdmin, pdfUpload, async (req,res) => {
   try {
     const product=await findProduct(req); if(!product) return res.status(404).json({success:false,message:"Course not found"});
     const module=findModule(product,req.body.moduleId); if(!module) return res.status(400).json({success:false,message:"Module does not belong to this course"});
-    const chapter=findChapter(module,req.body.chapterId); if(!chapter) return res.status(400).json({success:false,message:"Chapter does not belong to this module"});
+    const chapter=await resolveOrCreateChapter(product,module,req.body);
     if(!req.file) return res.status(400).json({success:false,message:"PDF file is required"});
     stored=await futils.getFileObject(req.file);
     const previous=await ChapterPdf.findOne({product:product._id,moduleId:module._id,chapterId:chapter._id});
