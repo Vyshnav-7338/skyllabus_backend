@@ -197,7 +197,14 @@ router.post(
 
       console.log("PDF:", body.pdf);
 
-      // continue your ChapterPdf save here...
+      const ChapterPdf = await ChapterPdf.create(body);
+      console.log("CHAPTER PDF CREATED:", ChapterPdf);
+
+      return res.status(201).json({
+        success: true,
+        message: "Chapter PDF created successfully",
+        data: ChapterPdf,
+      });
 
     } catch (error) {
       console.error(

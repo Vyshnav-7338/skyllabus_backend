@@ -9,7 +9,7 @@ const chapterPdfSchema = new mongoose.Schema({
   chapterTitle: { type: String, required: true, trim: true },
   description: { type: String, trim: true, default: "" },
   order: { type: Number, min: 0, default: 0 },
-  pdfFile: { type: fileSchema, required: true },
+  pdf: { type: Object, required: true },
   isPublished: { type: Boolean, default: true, index: true },
 }, { timestamps: true });
 
