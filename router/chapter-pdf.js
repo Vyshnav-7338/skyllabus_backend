@@ -322,4 +322,78 @@ router.post(
     }
   }
 );
+
+
+router.get("/", async (req, res) => {
+  try {
+
+    const filter = {};
+
+    // ==============================
+    // PRODUCT FILTER
+    // ==============================
+
+    if (req.query.productId) {
+
+      if (!mongoose.isValidObjectId(req.query.productId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid productId",
+        });
+      }
+
+      filter.product = req.query.productId;
+    }
+
+    // ==============================
+    // COURSE NAME FILTER
+    // ==============================
+
+    if (req.query.courseName) {
+      filter.courseName = String(
+        req.query.courseName
+      ).trim();
+    }
+
+    // ==============================
+    // MODULE FILTER
+    // ==============================
+
+    if (req.query.moduleId) {
+      filter.moduleId = req.query.moduleId;
+    }
+
+    // ==============================
+    // GET PDFs
+    // ==============================
+
+    const chapterPdfs = await ChapterPdf.find(filter)
+      .populate("product")
+      .sort({
+        order: 1,
+        createdAt: -1,
+      });
+
+    return res.status(200).json({
+      success: true,
+      count: chapterPdfs.length,
+      data: chapterPdfs,
+    });
+
+  } catch (error) {
+
+    console.error(
+      "GET CHAPTER PDF ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to get chapter PDFs",
+      error: error.message,
+    });
+  }
+});
+
+
 module.exports = router;
