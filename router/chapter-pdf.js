@@ -171,157 +171,128 @@ function findModule(product, moduleId) {
 // =====================================================
 
 
+router.post("/", async (req, res) => {
+  try {
+    console.log("BODY:", req.body);
+    console.log("FILES:", req.files);
 
-router.post(
-  "/",
-  async (req, res) => {
-    try {
-      console.log("BODY:", req.body);
-      console.log("FILES:", req.files);
-
-      // ==============================
-      // CHECK PDF
-      // ==============================
-
-      if (!req.files || !req.files.pdf) {
-        return res.status(400).json({
-          success: false,
-          message: "PDF file is required",
-        });
-      }
-
-      const file = req.files.pdf;
-
-      // ==============================
-      // VALIDATE PDF
-      // ==============================
-
-      if (
-        file.mimetype !== "application/pdf" &&
-        !String(file.name).toLowerCase().endsWith(".pdf")
-      ) {
-        return res.status(400).json({
-          success: false,
-          message: "Only PDF files are allowed",
-        });
-      }
-
-      // ==============================
-      // FIND COURSE
-      // ==============================
-
-      const product = await findProduct(req);
-
-      if (!product) {
-        return res.status(404).json({
-          success: false,
-          message: "Course not found",
-        });
-      }
-
-      // ==============================
-      // FIND MODULE
-      // ==============================
-
-      const module = findModule(
-        product,
-        req.body.moduleId
-      );
-
-      if (!module) {
-        return res.status(404).json({
-          success: false,
-          message: "Module not found",
-        });
-      }
-
-      // ==============================
-      // REQUIRED FIELDS
-      // ==============================
-
-      const chapterTitle = String(
-        req.body.chapterTitle || ""
-      ).trim();
-
-      if (!chapterTitle) {
-        return res.status(400).json({
-          success: false,
-          message: "Chapter title is required",
-        });
-      }
-
-      // ==============================
-      // SAVE PDF FILE
-      // ==============================
-
-      const pdfObject =
-        await futils.getFileObject(file);
-
-      console.log(
-        "PDF OBJECT:",
-        pdfObject
-      );
-
-      // ==============================
-      // CREATE DATABASE DOCUMENT
-      // ==============================
-
-      const chapterPdf =
-        await ChapterPdf.create({
-          product: product._id,
-
-          courseName: product.title,
-
-          moduleId: module._id,
-
-          moduleTitle: module.title,
-
-          chapterTitle: chapterTitle,
-
-          description: String(
-            req.body.description ||
-            req.body.chapterDescription ||
-            ""
-          ).trim(),
-
-          order: Number(
-            req.body.order || 1
-          ),
-
-          isPublished:
-            String(req.body.isPublished) ===
-            "true",
-
-          pdf: pdfObject,
-        });
-
-      console.log(
-        "CHAPTER PDF CREATED:",
-        chapterPdf
-      );
-
-      return res.status(201).json({
-        success: true,
-        message:
-          "Chapter PDF created successfully",
-        data: chapterPdf,
-      });
-
-    } catch (error) {
-      console.error(
-        "CHAPTER PDF ERROR:",
-        error
-      );
-
-      return res.status(500).json({
+    // ==============================
+    // CHECK PDF
+    // ==============================
+    if (!req.files || !req.files.pdf) {
+      return res.status(400).json({
         success: false,
-        message:
-          "Unable to save chapter PDF",
-        error: error.message,
+        message: "PDF file is required",
       });
     }
+
+    const file = req.files.pdf;
+
+    // ==============================
+    // VALIDATE PDF
+    // ==============================
+    if (
+      file.mimetype !== "application/pdf" &&
+      !String(file.name).toLowerCase().endsWith(".pdf")
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Only PDF files are allowed",
+      });
+    }
+
+    // ==============================
+    // FIND COURSE
+    // ==============================
+    const product = await findProduct(req);
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Course not found",
+      });
+    }
+
+    // ==============================
+    // FIND MODULE
+    // ==============================
+    const module = findModule(product, req.body.moduleId);
+
+    if (!module) {
+      return res.status(404).json({
+        success: false,
+        message: "Module not found",
+      });
+    }
+
+    // ==============================
+    // REQUIRED FIELDS
+    // ==============================
+    const chapterTitle = String(
+      req.body.chapterTitle || ""
+    ).trim();
+
+    if (!chapterTitle) {
+      return res.status(400).json({
+        success: false,
+        message: "Chapter title is required",
+      });
+    }
+
+    // ==============================
+    // SAVE PDF FILE
+    // ==============================
+    const pdfObject = await futils.getFileObject(file);
+
+    console.log("PDF OBJECT:", pdfObject);
+
+    // ==============================
+    // CREATE DATABASE DOCUMENT
+    // NO DUPLICATE CHECK
+    // ==============================
+    const chapterPdf = await ChapterPdf.create({
+      product: product._id,
+
+      moduleId: module._id,
+
+      moduleTitle: module.title,
+
+      chapterTitle: chapterTitle,
+
+      description: String(
+        req.body.description ||
+        req.body.chapterDescription ||
+        ""
+      ).trim(),
+
+      order: Number(req.body.order || 1),
+
+      isPublished:
+        req.body.isPublished === undefined
+          ? true
+          : String(req.body.isPublished) === "true",
+
+      pdf: pdfObject,
+    });
+
+    console.log("CHAPTER PDF CREATED:", chapterPdf);
+
+    return res.status(201).json({
+      success: true,
+      message: "Chapter PDF created successfully",
+      data: chapterPdf,
+    });
+
+  } catch (error) {
+    console.error("CHAPTER PDF ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to save chapter PDF",
+      error: error.message,
+    });
   }
-);
+});
 
 
 router.get("/", async (req, res) => {
