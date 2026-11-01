@@ -294,10 +294,10 @@ router.post("/", async (req, res) => {
   }
 });
 
-
 router.get("/", async (req, res) => {
   try {
-console.log("QUERY:", req.query);
+    console.log("QUERY:", req.query);
+
     const filter = {};
 
     // ==============================
@@ -305,15 +305,16 @@ console.log("QUERY:", req.query);
     // ==============================
 
     if (req.query.productId) {
+      const productId = String(req.query.productId).trim();
 
-      if (!mongoose.isValidObjectId(req.query.productId)) {
+      if (!mongoose.isValidObjectId(productId)) {
         return res.status(400).json({
           success: false,
           message: "Invalid productId",
         });
       }
 
-      filter.product = req.query.productId;
+      filter.product = productId;
     }
 
     // ==============================
@@ -321,9 +322,11 @@ console.log("QUERY:", req.query);
     // ==============================
 
     if (req.query.courseName) {
-      filter.courseName = String(
-        req.query.courseName
-      ).trim();
+      const courseName = String(req.query.courseName).trim();
+
+      if (courseName) {
+        filter.courseName = courseName;
+      }
     }
 
     // ==============================
@@ -331,7 +334,16 @@ console.log("QUERY:", req.query);
     // ==============================
 
     if (req.query.moduleId) {
-      filter.moduleId = req.query.moduleId;
+      const moduleId = String(req.query.moduleId).trim();
+
+      if (!mongoose.isValidObjectId(moduleId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid moduleId",
+        });
+      }
+
+      filter.moduleId = moduleId;
     }
 
     // ==============================
@@ -352,11 +364,7 @@ console.log("QUERY:", req.query);
     });
 
   } catch (error) {
-
-    console.error(
-      "GET CHAPTER PDF ERROR:",
-      error
-    );
+    console.error("GET CHAPTER PDF ERROR:", error);
 
     return res.status(500).json({
       success: false,
@@ -365,6 +373,5 @@ console.log("QUERY:", req.query);
     });
   }
 });
-
 
 module.exports = router;
