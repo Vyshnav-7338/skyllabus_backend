@@ -71,7 +71,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-router.post("/", requireAdmin, imageUpload, async (req, res) => {
+router.post("/", imageUpload, async (req, res) => {
   let uploaded;
   try {
     const name = String(req.body.name || "").trim();
