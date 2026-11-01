@@ -47,7 +47,7 @@ const moduleSchema = new mongoose.Schema({
 
 const productSchema = new mongoose.Schema({
   title: { type: String, required: true, trim: true },
-  slug: { type: String, required: true, trim: true, lowercase: true, unique: true, index: true },
+  slug: { type: String, required: true, trim: true, lowercase: true,index: true },
   shortDescription: { type: String, required: true, trim: true },
   description: { type: String, required: true, trim: true },
   category: { type: mongoose.Schema.Types.ObjectId, ref: "Category", required: true, index: true },
