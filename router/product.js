@@ -389,7 +389,7 @@ router.post("/", async (req, res) => {
   let committed = false;
   try {
     const product = new Product();
-    // await applyProductFields(product, req.body, req.files, true, createdMedia);
+    await applyProductFields(product, req.body, req.files, true, createdMedia);
     await product.save();
     committed = true;
     const persisted = await Product.findById(product._id).populate("category");
