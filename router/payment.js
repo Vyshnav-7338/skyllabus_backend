@@ -869,12 +869,13 @@ async function completeCheckout(
     );
   }
 
+  // Use a MongoDB session without a transaction. Production may run on a
+  // standalone MongoDB server, where withTransaction() throws and makes Stripe
+  // receive HTTP 500 even though the payment itself succeeded.
   const databaseSession =
     await mongoose.startSession();
 
   try {
-    await databaseSession.withTransaction(
-      async () => {
         const payment =
           await Payment.findOne({
             _id:
@@ -1013,8 +1014,6 @@ async function completeCheckout(
         // Enrollment is complete here: credit referral rewards once, then convenience fee.
         await creditEnrollmentReferralRewards(payment, enrollment, databaseSession);
         await creditConvenienceFee(payment, databaseSession);
-      }
-    );
   } finally {
     await databaseSession.endSession();
   }
