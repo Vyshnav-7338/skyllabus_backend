@@ -318,18 +318,6 @@ router.get("/", async (req, res) => {
     }
 
     // ==============================
-    // COURSE NAME FILTER
-    // ==============================
-
-    if (req.query.courseName) {
-      const courseName = String(req.query.courseName).trim();
-
-      if (courseName) {
-        filter.courseName = courseName;
-      }
-    }
-
-    // ==============================
     // MODULE FILTER
     // ==============================
 
@@ -347,7 +335,32 @@ router.get("/", async (req, res) => {
     }
 
     // ==============================
-    // GET PDFs
+    // COURSE NAME FILTER
+    // ==============================
+
+    if (req.query.courseName) {
+      filter.courseName = String(req.query.courseName).trim();
+    }
+
+    // ==============================
+    // CHAPTER TITLE FILTER
+    // ==============================
+
+    if (req.query.chapterTitle) {
+      filter.chapterTitle = String(req.query.chapterTitle).trim();
+    }
+
+    // ==============================
+    // PUBLISHED FILTER
+    // ==============================
+
+    if (req.query.isPublished !== undefined) {
+      filter.isPublished =
+        String(req.query.isPublished).toLowerCase() === "true";
+    }
+
+    // ==============================
+    // GET CHAPTER PDFs
     // ==============================
 
     const chapterPdfs = await ChapterPdf.find(filter)
@@ -355,12 +368,48 @@ router.get("/", async (req, res) => {
       .sort({
         order: 1,
         createdAt: -1,
-      });
+      })
+      .lean();
+
+    // ==============================
+    // ADD FULL PDF URL
+    // ==============================
+
+    const data = chapterPdfs.map((item) => {
+      const fileName = item.pdf?.name || "";
+
+      const pdfUrl = fileName
+        ? `http://skyllabus.online/cdn?file=${encodeURIComponent(fileName)}`
+        : "";
+
+      const thumbUrl = item.pdf?.thumb
+        ? `http://skyllabus.online${item.pdf.thumb}`
+        : "";
+
+      return {
+        ...item,
+
+        pdf: {
+          ...(item.pdf || {}),
+
+          url: pdfUrl,
+
+          thumbUrl: thumbUrl,
+        },
+
+        // Easy access for Flutter
+        pdfUrl: pdfUrl,
+      };
+    });
+
+    // ==============================
+    // RESPONSE
+    // ==============================
 
     return res.status(200).json({
       success: true,
-      count: chapterPdfs.length,
-      data: chapterPdfs,
+      count: data.length,
+      data: data,
     });
 
   } catch (error) {
