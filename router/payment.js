@@ -507,7 +507,7 @@ router.post(
       // Never trust amount values sent by the frontend; calculate them from the DB price.
       const baseAmount = toMinorUnits(price);
       const convenienceFee = Math.round(baseAmount * 0.01); // 1%
-      const gst = Math.round(baseAmount * 0.18); // 18% GST
+      const gst = toMinorUnits(71); // Existing `gst` field name kept; fixed ₹71 IGST + conversion fee
       const totalAmount = baseAmount + convenienceFee + gst;
 
       // Keep `amount` as the final payable amount for the existing webhook/status flow.
@@ -557,6 +557,38 @@ router.post(
         await Payment.findOne({
           activeKey,
         });
+
+      // If the payable amount changed, never reuse an older Stripe Checkout
+      // session because Stripe keeps the unit_amount that was used when that
+      // session was created. Keep all existing DB/API field names unchanged.
+      if (payment && Number(payment.totalAmount) !== totalAmount) {
+        if (payment.checkoutSessionId) {
+          try {
+            const oldSession = await stripeApi.checkout.sessions.retrieve(
+              payment.checkoutSessionId
+            );
+
+            if (oldSession.status === "open") {
+              await stripeApi.checkout.sessions.expire(payment.checkoutSessionId);
+            }
+          } catch (error) {
+            // A missing/already closed Stripe session should not block creating
+            // a fresh checkout with the current amount.
+            if (
+              error?.code !== "resource_missing" &&
+              error?.statusCode !== 404
+            ) {
+              throw error;
+            }
+          }
+        }
+
+        payment.paymentStatus = "expired";
+        payment.enrollmentStatus = "not_created";
+        payment.activeKey = undefined;
+        await payment.save();
+        payment = null;
+      }
 
       // --------------------------------------------------------
       // Reuse existing Checkout session
