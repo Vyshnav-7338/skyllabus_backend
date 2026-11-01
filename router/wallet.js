@@ -94,8 +94,8 @@ router.put("/payout-details", requireAuth, async (req, res) => {
 router.post("/withdraw", requireAuth, async (req, res) => {
   try {
     const amount = Number(req.body.amount);
-    if (!Number.isFinite(amount) || amount < 1000)
-      return res.status(400).json({ success: false, message: "Minimum withdrawal is ₹1,000" });
+    if (!Number.isFinite(amount) || amount !== 1000)
+      return res.status(400).json({ success: false, message: "Withdrawal amount must be exactly ₹1,000" });
     const wallet = await Wallet.findOne({ user: req.user._id });
     if (!wallet || wallet.availableBalance < amount)
       return res.status(400).json({ success: false, message: "Insufficient wallet balance" });
