@@ -15,6 +15,15 @@ const userSchema = new mongoose.Schema(
     level: { type: Number, min: 1, default: 1 },
     xp: { type: Number, min: 0, default: 0 },
     nextLevelXp: { type: Number, min: 1, default: 1000 },
+    payoutDetails: {
+      method: { type: String, enum: ["UPI", "BANK"], default: undefined },
+      upiId: { type: String, trim: true, default: "" },
+      accountHolderName: { type: String, trim: true, default: "" },
+      accountNumber: { type: String, trim: true, default: "" },
+      ifscCode: { type: String, trim: true, uppercase: true, default: "" },
+      bankName: { type: String, trim: true, default: "" },
+      updatedAt: { type: Date, default: null },
+    },
   },
   { timestamps: true },
 );
