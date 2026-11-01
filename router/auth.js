@@ -132,9 +132,9 @@ router.post("/signup", async (req, res) => {
     if (!emailPattern.test(email)) {
       return res.status(400).json({ success: false, message: "Enter a valid email address" });
     }
-    if (!phonePattern.test(phone)) {
-      return res.status(400).json({ success: false, message: "Phone must include a valid country code" });
-    }
+    // if (!phonePattern.test(phone)) {
+    //   return res.status(400).json({ success: false, message: "Phone must include a valid country code" });
+    // }
     if (password.length < 8) {
       return res.status(400).json({ success: false, message: "Password must be at least 8 characters" });
     }
