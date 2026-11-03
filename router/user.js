@@ -93,7 +93,7 @@ router.get("/dashboard", requireAuth, async (req, res) => {
   }
 });
 
-router.put("/", async (req, res) => {
+router.post("/", async (req, res) => {
   try {
     console.log("CHANGE PASSWORD CALLED");
 
