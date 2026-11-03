@@ -42,6 +42,11 @@ app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 app.use("/admin", express.static(path.join(__dirname, "..", "admin")));
 
 app.use(express.static("public"));
+const publicDir = path.join(__dirname, "public");
+
+app.get(["/payment/success", "/payment/cancel"], (req, res) => {
+  res.sendFile(path.join(publicDir, "index.html"));
+});
 
 app.get("/.well-known/assetlinks.json", (req, res) => {
   res.json([
@@ -101,7 +106,12 @@ JWT_SECRET='local-development-secret-change-before-production'
 app.use((req, res) => {
   res.status(404).json({ success: false, message: `Route not found: ${req.method} ${req.path}` });
 });
-
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: `Route not found: ${req.method} ${req.path}`
+  });
+});
 app.use((error, _req, res, _next) => {
   if (error && error.name === "MulterError") {
     console.error(error);
