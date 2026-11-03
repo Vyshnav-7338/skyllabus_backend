@@ -90,4 +90,29 @@ router.get("/dashboard", requireAuth, async (req, res) => {
   }
 });
 
+//change password
+router.put(`/api/user/chpwd/:email`, async (req, res) => {
+  console.log("CHANGE PASSWORD CALLED MAN");
+  var pwd = req.body.password;
+  var hashed = await bcrypt.hash(pwd, saltRounds);
+  var spass = req.body["security_pass"];
+  if (spass == "n439utb7gt74vg78v3g") {
+    const user = await User.findOne({ email: req.params.email });
+    if (user != null) {
+      user
+        .updateOne({ password: hashed })
+        .then((val) => {
+          res.send("success");
+        })
+        .catch((err) => {
+          res.status(500).send(err);
+        });
+    } else {
+      res.status(400).send("user not found");
+    }
+  } else {
+    res.status(401).send("request not permitted");
+  }
+});
+
 module.exports = router;
