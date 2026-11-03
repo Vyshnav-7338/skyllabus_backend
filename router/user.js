@@ -91,7 +91,7 @@ router.get("/dashboard", requireAuth, async (req, res) => {
 });
 
 //change password
-router.put(`/api/user/chpwd/:email`, async (req, res) => {
+router.put(`/chpwd/:email`, async (req, res) => {
   console.log("CHANGE PASSWORD CALLED MAN");
   var pwd = req.body.password;
   var hashed = await bcrypt.hash(pwd, saltRounds);

@@ -19,7 +19,7 @@ const productRouter = require("./router/product");
 const enrollmentRouter = require("./router/enrollment");
 const progressRouter = require("./router/progress");
 const { paymentRouter, stripeWebhook } = require("./router/payment");
-
+const emailOtpRouter = require("./router/emailotp");
 const giveawayRouter = require("./router/giveaway");
 const rewardRouter = require("./router/reward");
 const walletRouter = require("./router/wallet");
@@ -74,6 +74,7 @@ app.use("/api/payments", paymentRouter);
 app.use("/", cdnRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/user", userRouter);
+app.use("/",emailOtpRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/categories", categoryRouter);
