@@ -63,60 +63,6 @@ function signupError(message, statusCode = 400) {
   return error;
 }
 
-async function creditReferralUplines(newUser, directReferrer, session) {
-  const settings = await ReferralSettings.findOneAndUpdate(
-    { key: "default" },
-    { $setOnInsert: { key: "default" } },
-    { returnDocument: "after", upsert: true, runValidators: true, session },
-  );
-  if (!settings?.isActive || !directReferrer) return;
-
-  const visited = new Set([newUser._id.toString()]);
-  let upline = directReferrer;
-  for (let level = 1; level <= 5 && upline; level += 1) {
-    const uplineId = upline._id.toString();
-    if (visited.has(uplineId)) throw signupError("Invalid referral hierarchy", 409);
-    visited.add(uplineId);
-
-    const amountInMinorUnits = toMinorUnits(settings[`level${level}Reward`] || 0);
-    if (amountInMinorUnits > 0) {
-      let wallet = await Wallet.findOne({ user: upline._id }).session(session);
-      if (!wallet) {
-        [wallet] = await Wallet.create([{ user: upline._id }], { session });
-      }
-      const balanceBeforeInMinorUnits = toMinorUnits(wallet.availableBalance);
-      wallet.availableBalance = fromMinorUnits(balanceBeforeInMinorUnits + amountInMinorUnits);
-      wallet.totalCredits = fromMinorUnits(toMinorUnits(wallet.totalCredits) + amountInMinorUnits);
-      await wallet.save({ session });
-      await WalletTransaction.create([{
-        user: upline._id,
-        type: "CREDIT",
-        transactionType: "REFERRAL_REWARD",
-        amount: fromMinorUnits(amountInMinorUnits),
-        referralLevel: level,
-        referredUser: newUser._id,
-        balanceBefore: fromMinorUnits(balanceBeforeInMinorUnits),
-        balanceAfter: wallet.availableBalance,
-        description: `Level ${level} referral signup reward`,
-        reference: newUser.referralCode,
-        eventKey: `SIGNUP:${newUser._id}:UPLINE:${upline._id}:LEVEL:${level}`,
-      }], { session });
-      await ReferralCommission.create([{
-        beneficiary: upline._id,
-        sourceUser: newUser._id,
-        level,
-        amount: fromMinorUnits(amountInMinorUnits),
-        triggerType: "signup",
-        status: "credited",
-      }], { session });
-    }
-
-    upline = upline.referredBy
-      ? await User.findById(upline.referredBy).session(session)
-      : null;
-  }
-}
-
 router.post("/signup", async (req, res) => {
   let session;
   try {

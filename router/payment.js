@@ -141,6 +141,7 @@ async function creditEnrollmentReferralRewards(payment, enrollment, databaseSess
       await ReferralCommission.create([{
         beneficiary: upline._id,
         sourceUser: sourceUser._id,
+        enrollment: enrollment._id,
         level,
         amount: fromMinorUnits(amountMinor),
         triggerType: "enrollment",
