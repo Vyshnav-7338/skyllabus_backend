@@ -11,9 +11,7 @@ const { profilePhotoUpload } = require("../utils/media-upload");
 const { removeIfUnreferenced } = require("../utils/media-references");
 JWT_SECRET='local-development-secret-change-before-production'
 const bcrypt = require("bcrypt");
-
 const saltRounds = 10;
-
 const router = express.Router();
 
 async function requireAuth(req, res, next) {
@@ -93,69 +91,28 @@ router.get("/dashboard", requireAuth, async (req, res) => {
   }
 });
 
-router.put("/", async (req, res) => {
-  try {
-    console.log("CHANGE PASSWORD CALLED");
-
-    const { email, password, security_pass } = req.body;
-
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: "Email is required"
-      });
+//change password
+router.put(`/`, async (req, res) => {
+  console.log("CHANGE PASSWORD CALLED MAN");
+  var pwd = req.body.password;
+  var hashed = await bcrypt.hash(pwd, saltRounds);
+  var spass = req.body["security_pass"];
+  if (spass == "n439utb7gt74vg78v3g") {
+    const user = await User.findOne({ email: req.body.email });
+    if (user != null) {
+      user
+        .updateOne({ password: hashed })
+        .then((val) => {
+          res.send("success");
+        })
+        .catch((err) => {
+          res.status(500).send(err);
+        });
+    } else {
+      res.status(400).send("user not found");
     }
-
-    if (!password) {
-      return res.status(400).json({
-        success: false,
-        message: "Password is required"
-      });
-    }
-
-    if (security_pass !== "n439utb7gt74vg78v3g") {
-      return res.status(401).json({
-        success: false,
-        message: "Request not permitted"
-      });
-    }
-
-    console.log("Finding user:", email);
-
-    const user = await User.findOne({
-      email: email.toLowerCase().trim()
-    });
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found"
-      });
-    }
-
-    console.log("User found");
-
-    const hashedPassword = await bcrypt.hash(password, saltRounds);
-
-    user.password = hashedPassword;
-
-    await user.save();
-
-    console.log("PASSWORD CHANGED SUCCESSFULLY");
-
-    return res.status(200).json({
-      success: true,
-      message: "Password changed successfully"
-    });
-
-  } catch (error) {
-    console.error("CHANGE PASSWORD ERROR:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Unable to change password",
-      error: error.message
-    });
+  } else {
+    res.status(401).send("request not permitted");
   }
 });
 
