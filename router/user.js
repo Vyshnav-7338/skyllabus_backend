@@ -91,13 +91,13 @@ router.get("/dashboard", requireAuth, async (req, res) => {
 });
 
 //change password
-router.put(`/:email`, async (req, res) => {
+router.put(`/`, async (req, res) => {
   console.log("CHANGE PASSWORD CALLED MAN");
   var pwd = req.body.password;
   var hashed = await bcrypt.hash(pwd, saltRounds);
   var spass = req.body["security_pass"];
   if (spass == "n439utb7gt74vg78v3g") {
-    const user = await User.findOne({ email: req.params.email });
+    const user = await User.findOne({ email: req.body.email });
     if (user != null) {
       user
         .updateOne({ password: hashed })
