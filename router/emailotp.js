@@ -95,7 +95,7 @@ async function sendMail(target, otp) {
             secure: true,
             auth: {
                 user: eid,
-                pass: process.env.SKYLlABUS_EMAIL_APP_PASSWORD
+                pass: 'rlmi iaon xlsl zukm'
             }
         });
 
