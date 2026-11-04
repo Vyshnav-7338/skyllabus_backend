@@ -359,7 +359,8 @@ function checkoutUrls(productId) {
 
 async function getReusableSession(
   stripeApi,
-  payment
+  payment,
+  freshCheckout = false
 ) {
   if (!payment?.checkoutSessionId) {
     return null;
@@ -371,7 +372,21 @@ async function getReusableSession(
         payment.checkoutSessionId
       );
 
-    // Existing Checkout session is still usable
+    // Never replace a session that has already received payment.
+    if (session.payment_status === "paid") {
+      throw paymentError("Payment is already being confirmed", 409);
+    }
+
+    // A deliberate new checkout attempt may replace an unpaid open session.
+    if (session.status === "open" && freshCheckout) {
+      await stripeApi.checkout.sessions.expire(session.id);
+      payment.paymentStatus = "expired";
+      payment.enrollmentStatus = "not_created";
+      payment.activeKey = undefined;
+      await payment.save();
+      return null;
+    }
+
     if (session.status === "open") {
       return session;
     }
@@ -599,7 +614,8 @@ router.post(
         const reusable =
           await getReusableSession(
             stripeApi,
-            payment
+            payment,
+            req.body?.freshCheckout === true
           );
 
         if (reusable) {
@@ -700,6 +716,7 @@ const session =
   await stripeApi.checkout.sessions.create({
     mode: "payment",
 
+    payment_method_types: ["card"],
 
     customer_email: req.user.email,
 
