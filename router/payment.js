@@ -700,7 +700,6 @@ const session =
   await stripeApi.checkout.sessions.create({
     mode: "payment",
 
-    payment_method_types: ["card"],
 
     customer_email: req.user.email,
 
