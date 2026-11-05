@@ -13,6 +13,7 @@ dns.setServers([
 
 const authRouter = require("./router/auth");
 const userRouter = require("./router/user");
+const supportTicketRouter = require("./router/support-ticket");
 const { adminRouter, usersRouter } = require("./router/admin");
 const categoryRouter = require("./router/category");
 const productRouter = require("./router/product");
@@ -79,6 +80,7 @@ app.use("/api/payments", paymentRouter);
 app.use("/", cdnRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/user", userRouter);
+app.use("/api/support-tickets", supportTicketRouter);
 app.use("/",emailOtpRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/users", usersRouter);
