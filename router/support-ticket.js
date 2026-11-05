@@ -1,12 +1,8 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const path = require('path');
-const fs = require('fs/promises');
-const crypto = require('crypto');
 const User = require('../models/User');
 const SupportTicket = require('../models/SupportTicket');
 const router = express.Router();
-const uploadDir = path.join(__dirname, '..', 'public', 'ticket-uploads');
 const futils = require("../utils/fileutils");
 
 async function auth(req, res, next) {
@@ -22,21 +18,31 @@ async function auth(req, res, next) {
 }
 router.use(auth);
 router.post('/', async (req, res) => {
-  let filePath;
   try {
     const message = String(req.body?.message || '').trim();
     if (!message || message.length > 3000) return res.status(400).json({ success: false, message: 'Message is required (max 3000 characters)' });
+    // Same upload helper used by chapter-pdf.js.
+    // Photo is optional; text-only support tickets are supported.
     const file = req.files?.photo;
-    if (Array.isArray(file)) return res.status(400).json({ success: false, message: 'Only one photo allowed' });
-   
-   
-         const photo = await futils.getFileObject(file);
-     
-    
+    if (Array.isArray(file)) {
+      return res.status(400).json({ success: false, message: 'Only one photo allowed' });
+    }
+    let photo = null;
+    if (file) {
+      const allowedMime = ['image/jpeg', 'image/png'];
+      const allowedExt = /\.(jpg|jpeg|png)$/i;
+      if (!allowedMime.includes(file.mimetype) || !allowedExt.test(String(file.name || ''))) {
+        return res.status(400).json({ success: false, message: 'Only JPG, JPEG or PNG photos are allowed' });
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        return res.status(400).json({ success: false, message: 'Photo must be 5 MB or smaller' });
+      }
+      photo = await futils.getFileObject(file);
+    }
+
     const ticket = await SupportTicket.create({ user: req.user._id, message, photo});
     return res.status(201).json({ success: true, message: 'Support ticket submitted', data: ticket });
   } catch (error) {
-    if (filePath) await fs.unlink(filePath).catch(() => {});
     console.error('Ticket creation failed:', error);
     return res.status(500).json({ success: false, message: 'Unable to submit ticket' });
   }
