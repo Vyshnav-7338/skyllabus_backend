@@ -29,11 +29,7 @@ router.post('/', async (req, res) => {
     }
     let photo = null;
     if (file) {
-      const allowedMime = ['image/jpeg', 'image/png'];
-      const allowedExt = /\.(jpg|jpeg|png)$/i;
-      if (!allowedMime.includes(file.mimetype) || !allowedExt.test(String(file.name || ''))) {
-        return res.status(400).json({ success: false, message: 'Only JPG, JPEG or PNG photos are allowed' });
-      }
+  
       if (file.size > 5 * 1024 * 1024) {
         return res.status(400).json({ success: false, message: 'Photo must be 5 MB or smaller' });
       }
