@@ -4,6 +4,7 @@ const User = require("../models/User");
 const Wallet = require("../models/Wallet");
 const WalletTransaction = require("../models/WalletTransaction");
 const ReferralSettings = require("../models/ReferralSettings");
+const Enrollment = require("../models/Enrollment");
 JWT_SECRET='local-development-secret-change-before-production'
 
 const router = express.Router();
@@ -117,6 +118,16 @@ router.get("/level/:level", requireAuth, async (req, res) => {
       ])
       : [[], 0];
 
+    // Only the referral member display status is based on enrollment.
+    // Do not alter user account status, referral counts or rewards.
+    const enrolledIds = members.length
+      ? await Enrollment.distinct("user", {
+          user: { $in: members.map((member) => member._id) },
+          status: { $in: ["active", "completed"] },
+        })
+      : [];
+    const enrolledSet = new Set(enrolledIds.map(String));
+
     return res.json({
       success: true,
       data: {
@@ -129,7 +140,7 @@ router.get("/level/:level", requireAuth, async (req, res) => {
           id: member._id,
           name: member.name,
           joinedAt: member.createdAt,
-          status: member.status || "active",
+          status: enrolledSet.has(String(member._id)) ? "active" : "not_enrolled",
         })),
       },
     });
