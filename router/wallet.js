@@ -6,7 +6,7 @@ const User = require("../models/User");
 const Wallet = require("../models/Wallet");
 const WalletTransaction = require("../models/WalletTransaction");
 const WithdrawalRequest = require("../models/WithdrawalRequest");
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET='local-development-secret-change-before-production'
 
 const router = express.Router();
 
