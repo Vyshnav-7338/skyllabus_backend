@@ -5,6 +5,7 @@ const Product = require("../models/Product");
 const Enrollment = require("../models/Enrollment");
 const VideoProgress = require("../models/VideoProgress");
 const Reward = require("../models/Reward");
+const WalletTransaction = require("../models/WalletTransaction");
 const Giveaway = require("../models/Giveaway");
 const futils = require("../utils/fileutils");
 const { profilePhotoUpload } = require("../utils/media-upload");
@@ -28,15 +29,24 @@ async function requireAuth(req, res, next) {
   }
 }
 
-function levelData(user) {
-  const nextLevelXp = Math.max(1, user.nextLevelXp);
+// Lifetime wallet credits: debits and withdrawals never reduce XP.
+// A transfer sender's debit is excluded; only the recipient's net credit counts.
+async function levelData(user) {
+  const totals = await WalletTransaction.aggregate([
+    { $match: { user: user._id, type: "CREDIT" } },
+    { $group: { _id: null, amount: { $sum: "$amount" } } },
+  ]);
+  const lifetimeCredits = Math.max(0, Math.round((totals[0]?.amount || 0) * 100) / 100);
+  const level = Math.min(5, Math.floor(lifetimeCredits / 1000) + 1);
+  const xp = level === 5 ? 1000 : Math.round((lifetimeCredits % 1000) * 100) / 100;
   return {
-    level: user.level,
-    title: `Level ${user.level}`,
-    xp: user.xp,
-    nextLevelXp,
-    nextLevelTitle: `Level ${user.level + 1}`,
-    percentage: Math.min(100, Math.round((user.xp / nextLevelXp) * 100)),
+    level,
+    title: `Level ${level}`,
+    xp,
+    nextLevelXp: 1000,
+    nextLevelTitle: level === 5 ? "Max Level" : `Level ${level + 1}`,
+    percentage: Math.min(100, Math.round((xp / 1000) * 100)),
+    lifetimeXp: lifetimeCredits,
   };
 }
 
@@ -61,7 +71,7 @@ router.put("/photo", requireAuth, profilePhotoUpload, async (req, res) => {
 });
 
 router.get("/progress", requireAuth, async (req, res) => {
-  return res.json({ success: true, data: levelData(req.user) });
+  return res.json({ success: true, data: await levelData(req.user) });
 });
 
 router.get("/dashboard", requireAuth, async (req, res) => {
@@ -79,7 +89,7 @@ router.get("/dashboard", requireAuth, async (req, res) => {
       success: true,
       data: {
         user: req.user,
-        level: levelData(req.user),
+        level: await levelData(req.user),
         stats: { enrolledCourses, completedCourses, videosCompleted, rewards },
         featuredProducts,
         activeGiveaway,

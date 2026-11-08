@@ -1,10 +1,12 @@
 const express = require("express");
+const mongoose = require("mongoose");
+const { toMinorUnits, fromMinorUnits } = require("../utils/money");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const Wallet = require("../models/Wallet");
 const WalletTransaction = require("../models/WalletTransaction");
 const WithdrawalRequest = require("../models/WithdrawalRequest");
-JWT_SECRET='local-development-secret-change-before-production'
+const JWT_SECRET = process.env.JWT_SECRET;
 
 const router = express.Router();
 
@@ -89,6 +91,67 @@ router.put("/payout-details", requireAuth, async (req, res) => {
     console.error(error);
     return res.status(500).json({ success: false, message: "Unable to save payout details" });
   }
+});
+
+// Wallet-to-wallet transfers require MongoDB replica-set transactions.
+const FEE_EMAIL = "minhajmuhammed999@gmail.com";
+router.post("/transfer", requireAuth, async (req, res) => {
+  const amountMinor = toMinorUnits(req.body.amount);
+  const code = String(req.body.referralCode || "").trim().toUpperCase();
+  const transferId = String(req.body.transferId || "").trim();
+  if (!Number.isSafeInteger(amountMinor) || amountMinor < 50000 || amountMinor > 1000000000)
+    return res.status(400).json({ success: false, message: "Minimum transfer is ₹500" });
+  if (!code || !/^[a-zA-Z0-9_-]{4,64}$/.test(transferId))
+    return res.status(400).json({ success: false, message: "Valid recipient code and transfer ID required" });
+  const amount = fromMinorUnits(amountMinor);
+  const fee = fromMinorUnits(Math.round(amountMinor * 5 / 100));
+  const net = fromMinorUnits(amountMinor - Math.round(amountMinor * 5 / 100));
+  const key = `WALLET_TRANSFER:${req.user._id}:${transferId}`;
+  let session;
+  try {
+    const prior = await WalletTransaction.findOne({ eventKey: `${key}:SENDER` });
+    if (prior) return res.json({ success: true, message: "Transfer already completed", data: { amount, fee, received: net, transferId } });
+    const [recipient, feeUser] = await Promise.all([
+      User.findOne({ referralCode: code, status: { $ne: "disabled" } }),
+      User.findOne({ email: FEE_EMAIL, status: { $ne: "disabled" } }),
+    ]);
+    if (!recipient) return res.status(404).json({ success: false, message: "Recipient code not found" });
+    if (String(recipient._id) === String(req.user._id)) return res.status(400).json({ success: false, message: "Cannot transfer to yourself" });
+    if (!feeUser || [String(req.user._id), String(recipient._id)].includes(String(feeUser._id)))
+      return res.status(409).json({ success: false, message: "Fee account unavailable or conflicts with transfer parties" });
+    session = await mongoose.startSession();
+    await session.withTransaction(async () => {
+      const sender = await Wallet.findOneAndUpdate(
+        { user: req.user._id, availableBalance: { $gte: amount } },
+        { $inc: { availableBalance: -amount, totalDebits: amount } },
+        { new: false, session }
+      );
+      if (!sender) { const e = new Error("Insufficient wallet balance"); e.status = 400; throw e; }
+      const credits = [];
+      for (const [user, credit] of [[recipient, net], [feeUser, fee]]) {
+        const previous = await Wallet.findOneAndUpdate(
+          { user: user._id }, { $inc: { availableBalance: credit, totalCredits: credit }, $setOnInsert: { user: user._id } },
+          { upsert: true, new: false, session, setDefaultsOnInsert: true }
+        );
+        credits.push({ user, credit, before: previous?.availableBalance ?? 0 });
+      }
+      await WalletTransaction.insertMany([
+        { user: req.user._id, type: "DEBIT", transactionType: "WALLET_TRANSFER", amount,
+          balanceBefore: sender.availableBalance, balanceAfter: fromMinorUnits(toMinorUnits(sender.availableBalance) - amountMinor),
+          description: `Transfer to ${code}`, reference: transferId, eventKey: `${key}:SENDER` },
+        ...credits.map(({ user, credit, before }, i) => ({ user: user._id, type: "CREDIT",
+          transactionType: i === 0 ? "WALLET_TRANSFER" : "WALLET_TRANSFER_FEE", amount: credit,
+          balanceBefore: before, balanceAfter: fromMinorUnits(toMinorUnits(before) + toMinorUnits(credit)),
+          description: i === 0 ? "Wallet transfer received" : "Wallet transfer fee received",
+          reference: transferId, eventKey: `${key}:${i === 0 ? "RECEIVER" : "FEE"}` }))
+      ], { session });
+    });
+    return res.json({ success: true, message: "Transfer successful", data: { amount, fee, received: net, transferId } });
+  } catch (error) {
+    if (error.code === 11000) return res.status(409).json({ success: false, message: "Transfer already processed; refresh wallet" });
+    console.error("Wallet transfer failed", error);
+    return res.status(error.status || 500).json({ success: false, message: error.status ? error.message : "Transfer failed. Please retry with the same transfer ID." });
+  } finally { if (session) await session.endSession(); }
 });
 
 router.post("/withdraw", requireAuth, async (req, res) => {
