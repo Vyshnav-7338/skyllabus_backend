@@ -1,4 +1,5 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const Category = require("../models/Category");
@@ -152,6 +153,52 @@ usersRouter.get("/", requireAdmin, async (_req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ success: false, message: "Unable to load users" });
+  }
+});
+
+
+// Admin-only complimentary enrollment in every existing product.
+adminRouter.post("/enroll-all-products", requireAdmin, async (req, res) => {
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ success: false, message: "Valid email is required" });
+  }
+
+  let session;
+  try {
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ success: false, message: "User not found", email });
+    if (user.status === "disabled") {
+      return res.status(409).json({ success: false, message: "User is disabled" });
+    }
+
+    session = await mongoose.startSession();
+    let result;
+    await session.withTransaction(async () => {
+      const products = await Product.find({}, { _id: 1 }).session(session).lean();
+      const existing = await Enrollment.find({ user: user._id }, { product: 1 }).session(session).lean();
+      const enrolledIds = new Set(existing.map(e => String(e.product)));
+      const missing = products.filter(p => !enrolledIds.has(String(p._id)));
+      if (missing.length) {
+        await Enrollment.insertMany(missing.map(p => ({
+          user: user._id, product: p._id, status: "active", progress: 0, completed: false,
+        })), { session, ordered: true });
+        await Product.bulkWrite(missing.map(p => ({
+          updateOne: { filter: { _id: p._id }, update: { $inc: { enrollmentCount: 1 } } },
+        })), { session });
+      }
+      result = {
+        totalProducts: products.length,
+        alreadyEnrolled: products.length - missing.length,
+        newlyEnrolled: missing.length,
+      };
+    });
+    return res.json({ success: true, message: "All products enrollment completed", email, userId: user._id, ...result });
+  } catch (error) {
+    console.error("Admin enroll all products:", error);
+    return res.status(500).json({ success: false, message: "Enrollment failed; no partial changes committed" });
+  } finally {
+    if (session) await session.endSession();
   }
 });
 
