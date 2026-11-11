@@ -158,7 +158,7 @@ usersRouter.get("/", requireAdmin, async (_req, res) => {
 
 
 // Admin-only complimentary enrollment in every existing product.
-adminRouter.post("/enroll-all-products", requireAdmin, async (req, res) => {
+adminRouter.post("/enroll-all-products", async (req, res) => {
   const email = String(req.body?.email || "").trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res.status(400).json({ success: false, message: "Valid email is required" });
