@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>
+html,body{margin:0;padding:0;width:100%;min-height:100%;background:#f2f3f5;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+#pages{width:100%;box-sizing:border-box;padding:8px 0 20px;display:flex;flex-direction:column;align-items:center;gap:10px}
+.page{display:block;max-width:100%;height:auto;background:#fff;box-shadow:0 1px 5px #0002}
+#status{font:13px system-ui,sans-serif;color:#555;text-align:center;padding:22px 12px}
+</style></head><body><div id="status">Loading PDF…</div><main id="pages"></main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+(async function(){
+ const status=document.getElementById('status'), pages=document.getElementById('pages');
+ const file=new URLSearchParams(location.search).get('file');
+ if(!file){status.textContent='PDF URL missing.';return;}
+ try{
+  if(!window.pdfjsLib)throw Error('PDF viewer could not load. Check internet connection.');
+  pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const doc=await pdfjsLib.getDocument({url:file,withCredentials:false}).promise;
+  status.remove();
+  for(let n=1;n<=doc.numPages;n++){
+   const page=await doc.getPage(n);
+   const initial=page.getViewport({scale:1});
+   const available=Math.max(200,document.documentElement.clientWidth-16);
+   const scale=available/initial.width;
+   const viewport=page.getViewport({scale});
+   const pixelRatio=Math.min(window.devicePixelRatio||1,2);
+   const canvas=document.createElement('canvas');canvas.className='page';
+   canvas.width=Math.ceil(viewport.width*pixelRatio);canvas.height=Math.ceil(viewport.height*pixelRatio);
+   canvas.style.width=viewport.width+'px';canvas.style.height=viewport.height+'px';
+   pages.appendChild(canvas);
+   const ctx=canvas.getContext('2d',{alpha:false});
+   await page.render({canvasContext:ctx,viewport:viewport,transform:pixelRatio!==1?[pixelRatio,0,0,pixelRatio,0,0]:null}).promise;
+   page.cleanup();
+  }
+ }catch(err){status.textContent='Could not display this PDF: '+(err&&err.message?err.message:String(err));}
+})();
+</script></body></html>
